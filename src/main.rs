@@ -1,9 +1,10 @@
-pub mod adf_types;
+pub mod adf;
+pub mod convert;
 pub mod html;
 
+use crate::html::ADFBuilder;
 use html5ever::tendril::Tendril;
 use html5ever::tokenizer::{BufferQueue, Tokenizer, TokenizerOpts};
-use crate::html::ADFBuilder;
 
 fn main() {
     let html = r#"

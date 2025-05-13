@@ -5,6 +5,10 @@ use strum_macros::{AsRefStr, Display, EnumIter, EnumString};
 #[strum(serialize_all = "camelCase")]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AdfNode {
+    Doc {
+        content: Vec<AdfNode>,
+        version: i32,
+    },
     Blockquote {
         content: Vec<AdfNode>,
     },
@@ -16,20 +20,6 @@ pub enum AdfNode {
         attrs: Option<CodeBlockAttrs>,
         #[serde(skip_serializing_if = "Option::is_none")]
         content: Option<Vec<AdfNode>>,
-    },
-    Date {
-        attrs: DateAttrs,
-    },
-    Doc {
-        content: Vec<AdfNode>,
-        version: i32,
-    },
-    Emoji {
-        attrs: EmojiAttrs,
-    },
-    Expand {
-        content: Vec<AdfNode>,
-        attrs: ExpandAttrs,
     },
     HardBreak,
     Heading {
@@ -43,31 +33,9 @@ pub enum AdfNode {
     ListItem {
         content: Vec<AdfNode>,
     },
-    Media {
-        attrs: MediaAttrs,
-    },
-    MediaGroup {
-        content: Vec<MediaNode>,
-    },
-    MediaSingle {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        attrs: Option<MediaSingleAttrs>,
-        content: Vec<MediaNode>,
-    },
-    Mention {
-        attrs: MentionAttrs,
-    },
-    NestedExpand {
-        attrs: NestedAttrs,
-        content: Vec<AdfNode>,
-    },
     OrderedList {
         #[serde(skip_serializing_if = "Option::is_none")]
         attrs: Option<OrderedListAttrs>,
-        content: Vec<AdfNode>,
-    },
-    Panel {
-        attrs: PanelAttrs,
         content: Vec<AdfNode>,
     },
     Paragraph {
@@ -75,9 +43,6 @@ pub enum AdfNode {
         content: Option<Vec<AdfNode>>,
     },
     Rule,
-    Status {
-        attrs: StatusAttrs,
-    },
     Table {
         #[serde(skip_serializing_if = "Option::is_none")]
         attrs: Option<TableAttrs>,
@@ -98,6 +63,39 @@ pub enum AdfNode {
         text: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         marks: Option<Vec<AdfMark>>,
+    },
+    // Nodes which do not directly correspond to an HTML element
+    Date {
+        attrs: DateAttrs,
+    },
+    Emoji {
+        attrs: EmojiAttrs,
+    },
+    Expand {
+        content: Vec<AdfNode>,
+        attrs: ExpandAttrs,
+    },
+    Panel {
+        attrs: PanelAttrs,
+        content: Vec<AdfNode>,
+    },
+    MediaGroup {
+        content: Vec<MediaNode>,
+    },
+    MediaSingle {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attrs: Option<MediaSingleAttrs>,
+        content: Vec<MediaNode>,
+    },
+    Mention {
+        attrs: MentionAttrs,
+    },
+    NestedExpand {
+        attrs: NestedAttrs,
+        content: Vec<AdfNode>,
+    },
+    Status {
+        attrs: StatusAttrs,
     },
     // The following nodes exist but are not documented in the ADF spec:
     // https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/
@@ -130,6 +128,23 @@ impl AdfNode {
         eprintln!("unwrap_doc called on non-doc node");
         Vec::new()
     }
+
+    pub fn is_task_item(&self) -> bool {
+        matches!(self, Self::TaskItem { .. })
+    }
+}
+
+#[derive(Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+pub struct LinkMark {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collection: Option<String>,
+    pub href: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub occurrence_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Debug, Serialize, Eq, PartialEq, EnumIter, AsRefStr)]
@@ -142,17 +157,7 @@ pub enum AdfMark {
     Strong,
     Em,
     Code,
-    Link {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        collection: Option<String>,
-        href: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        occurrence_key: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        title: Option<String>,
-    },
+    Link(LinkMark),
     Strike,
     Subsup {
         #[serde(rename = "type")]
@@ -325,20 +330,6 @@ pub struct CodeBlockAttrs {
 }
 
 #[derive(Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
-pub struct MediaAttrs {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub alt: Option<String>,
-    pub collection: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub height: Option<u32>,
-    pub id: String,
-    #[serde(rename = "type")]
-    pub type_: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub width: Option<u32>,
-}
-
-#[derive(Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
 pub struct OrderedListAttrs {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order: Option<u32>,
@@ -368,6 +359,28 @@ pub struct MediaNode {
     #[serde(rename = "type")]
     pub media_type: String,
     pub attrs: MediaAttrs,
+    pub marks: Vec<MediaMark>,
+}
+
+#[derive(Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
+pub struct MediaAttrs {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alt: Option<String>,
+    pub collection: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    pub id: String,
+    #[serde(rename = "type")]
+    pub type_: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+}
+
+#[derive(Clone, Deserialize, Debug, Serialize, Eq, PartialEq, EnumIter, AsRefStr)]
+#[serde(tag = "type", content = "attrs", rename_all = "camelCase")]
+pub enum MediaMark {
+    Link(LinkMark),
+    Border { color: String, size: u32 },
 }
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
@@ -431,10 +444,18 @@ pub struct MediaSingleAttrs {
 }
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum TaskItemState {
+    #[default]
+    Todo,
+    Done,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskItemAttrs {
     pub local_id: String,
-    pub state: String,
+    pub state: TaskItemState,
 }
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
