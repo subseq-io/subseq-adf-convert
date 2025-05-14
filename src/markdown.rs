@@ -2,11 +2,7 @@ use htmd::{Element, HtmlToMarkdown};
 use markdown::{CompileOptions, Options, ParseOptions, to_html_with_options as markdown_to_html};
 use markup5ever_rcdom::{Handle, NodeData};
 
-use crate::{
-    adf::adf_types::AdfNode,
-    adf_to_html::adf_to_html,
-    html_to_adf::html_to_adf,
-};
+use crate::{adf::adf_types::AdfNode, adf_to_html::adf_to_html, html_to_adf::html_to_adf};
 
 pub(crate) fn table_handler(element: Element) -> Option<String> {
     let mut headers = vec![];
@@ -43,8 +39,16 @@ pub(crate) fn table_handler(element: Element) -> Option<String> {
     let mut md = String::from("\n\n| ");
     md.push_str(&headers.join(" | "));
     md.push_str(" |\n|");
-    for _ in &headers {
-        md.push_str(" --- |");
+
+    if headers.is_empty() {
+        // If no headers, still put the header bar above the table
+        for _ in &rows {
+            md.push_str(" --- |");
+        }
+    } else {
+        for _ in &headers {
+            md.push_str(" --- |");
+        }
     }
     md.push('\n');
 
