@@ -98,15 +98,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "html-builder"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9153fa5f4adf77e28538b2b98b680bb89435ec3f9861e58daa540effec5a898e"
-dependencies = [
- "html-escape",
-]
-
-[[package]]
 name = "html-escape"
 version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -524,9 +515,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "htmd",
- "html-builder",
+ "html-escape",
  "html5ever 0.31.0",
  "markdown",
+ "markup5ever_rcdom",
  "serde",
  "serde_json",
  "strum",

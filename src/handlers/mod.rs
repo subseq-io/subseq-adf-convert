@@ -3,9 +3,11 @@ use std::collections::HashMap;
 
 mod base;
 mod custom;
+mod table;
 
 pub(crate) use base::*;
 pub(crate) use custom::*;
+pub(crate) use table::*;
 
 use crate::adf::adf_types::{AdfMark, AdfNode, LocalId, MediaNode, TaskItemState};
 
@@ -43,6 +45,15 @@ pub enum MediaBlockType {
     MediaSingle,
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum TableBlockType {
+    Table,
+    Section,
+    Row,
+    Cell,
+    Header,
+}
+
 #[derive(Debug)]
 pub enum BlockContext {
     Document(Vec<AdfNode>),
@@ -50,13 +61,10 @@ pub enum BlockContext {
     CodeBlock(Vec<String>),
     CustomBlock(CustomBlockType, Vec<AdfNode>, HashMap<String, String>),
     MediaBlock(MediaBlockType, Vec<MediaNode>, HashMap<String, String>),
+    TableBlock(TableBlockType, Vec<AdfNode>),
     Heading(u8, Vec<AdfNode>),
     Summary(Vec<AdfNode>),
     Paragraph(Vec<AdfNode>),
-    Table(Vec<AdfNode>),
-    TableCell(Vec<AdfNode>),
-    TableHeader(Vec<AdfNode>),
-    TableRow(Vec<AdfNode>),
 
     PendingList {
         nodes: Vec<AdfNode>,

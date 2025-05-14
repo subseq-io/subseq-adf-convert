@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 use std::fmt::Write;
 
-use htmd::{Element, HtmlToMarkdown};
-use html_builder::*;
-use markdown::{CompileOptions, Options, ParseOptions, to_html_with_options as markdown_to_html};
+use crate::html_builder::*;
 
 use crate::{
     adf::adf_types::{AdfMark, AdfNode, MediaMark, MediaNode, Subsup, TaskItemState},
@@ -12,26 +10,6 @@ use crate::{
 
 pub fn close(node: Void) {
     node.attr("/");
-}
-
-pub fn markdown_to_adf(markdown: &str) -> Option<AdfNode> {
-    let parse_options = ParseOptions::gfm();
-    let options = Options {
-        parse: parse_options,
-        compile: CompileOptions {
-            allow_any_img_src: true, // We're going round trip to ADF so we can allow this
-            allow_dangerous_html: true,
-            allow_dangerous_protocol: true,
-            ..Default::default()
-        },
-    };
-    let html = markdown_to_html(markdown, &options)
-        .map_err(|err| {
-            tracing::warn!("Failed to convert markdown to HTML: {}", err);
-        })
-        .unwrap_or_default();
-    eprintln!("\n\nHTML:\n{}\n\n", html);
-    Some(html_to_adf(html))
 }
 
 pub fn html_to_adf(html: String) -> AdfNode {
@@ -243,17 +221,64 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 writeln!(status, "{}", attrs.text).ok();
             }
             AdfNode::Table { content, .. } => {
-                let table = node.table();
-                inner_adf_to_html(table, content);
+                let mut table = node.table();
+
+                // Extract header rows and other rows
+                let mut header_rows = vec![];
+                let mut body_rows = vec![];
+
+                for row in content {
+                    if let AdfNode::TableRow {
+                        content: row_content,
+                        ..
+                    } = &row
+                    {
+                        if row_content
+                            .iter()
+                            .any(|n| matches!(n, AdfNode::TableHeader { .. }))
+                        {
+                            header_rows.push(row.clone());
+                        } else {
+                            body_rows.push(row.clone());
+                        }
+                    }
+                }
+
+                if !header_rows.is_empty() {
+                    let mut thead = table.thead();
+                    for row in header_rows {
+                        inner_adf_to_html(
+                            thead.tr(),
+                            match row {
+                                AdfNode::TableRow { content, .. } => content,
+                                _ => unreachable!(),
+                            },
+                        );
+                    }
+                }
+
+                if !body_rows.is_empty() {
+                    let mut tbody = table.tbody();
+                    for row in body_rows {
+                        inner_adf_to_html(
+                            tbody.tr(),
+                            match row {
+                                AdfNode::TableRow { content, .. } => content,
+                                _ => unreachable!(),
+                            },
+                        );
+                    }
+                }
             }
             AdfNode::TableCell { content, .. } => {
                 let cell = node.td();
                 inner_adf_to_html(cell, content);
             }
             AdfNode::TableHeader { content, .. } => {
-                let header = node.tr();
+                let header = node.th();
                 inner_adf_to_html(header, content);
             }
+            // TableRow is simplified now, always outputs <tr> (never decides on header itself anymore)
             AdfNode::TableRow { content, .. } => {
                 let row = node.tr();
                 inner_adf_to_html(row, content);
@@ -318,7 +343,8 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 inner_adf_to_html(decision_list, content);
             }
             AdfNode::DecisionItem { content, attrs } => {
-                let child = node
+                let mut li = node.li();
+                let child = li
                     .child(Cow::Borrowed("adf-decision-item"))
                     .attr(&format!("id=\"{}\"", attrs.local_id));
                 inner_adf_to_html(child, content);
@@ -331,50 +357,11 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
     }
 }
 
-pub fn html_to_markdown(html: String) -> String {
-    let converter = HtmlToMarkdown::builder()
-        .add_handler(
-            vec![
-                "a",
-                "img",
-                "time",
-                "input",
-                "figure",
-                "details",
-                "summary",
-                "adf-emoji",
-                "adf-mention",
-                "adf-status",
-                "adf-media-single",
-                "adf-media-group",
-                "adf-decision-item",
-                "adf-local-data",
-            ],
-            |element: Element| {
-                let attrs = element
-                    .attrs
-                    .iter()
-                    .map(|attr| format!("{}=\"{}\"", attr.name.local.as_ref(), attr.value))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                Some(format!(
-                    "<{0} {1}>{2}</{0}>",
-                    element.tag, attrs, element.content
-                ))
-            },
-        )
-        .build();
-    converter.convert(&html).unwrap_or_default()
-}
-
-pub fn adf_to_markdown(adf: &[AdfNode]) -> String {
-    html_to_markdown(adf_to_html(adf.to_vec()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::adf::adf_types::*;
+    use crate::markdown::{adf_to_markdown, markdown_to_adf};
 
     fn roundtrip_adf_html_adf(adf: AdfNode) {
         let html = adf_to_html(vec![adf.clone()]);
@@ -508,7 +495,7 @@ mod tests {
         let adf = AdfNode::Doc {
             content: vec![AdfNode::TaskList {
                 attrs: LocalId {
-                    local_id: "list-1".into(),
+                    local_id: "task-list-1".into(),
                 },
                 content: vec![
                     AdfNode::TaskItem {
@@ -710,6 +697,117 @@ mod tests {
                     },
                 ],
                 attrs: None,
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_blockquote_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Blockquote {
+                content: vec![AdfNode::Paragraph {
+                    content: Some(vec![AdfNode::Text {
+                        text: "Blockquoted text".into(),
+                        marks: None,
+                    }]),
+                }],
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_codeblock_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::CodeBlock {
+                attrs: None,
+                content: Some(vec![AdfNode::Text {
+                    text: "let x = 42;\n".into(),
+                    marks: None,
+                }]),
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_hardbreak_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Paragraph {
+                content: Some(vec![
+                    AdfNode::Text {
+                        text: "Line one".into(),
+                        marks: None,
+                    },
+                    AdfNode::HardBreak,
+                    AdfNode::Text {
+                        text: "Line two".into(),
+                        marks: None,
+                    },
+                ]),
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_decision_list_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::DecisionList {
+                attrs: LocalId {
+                    local_id: "decision-list-1".into(),
+                },
+                content: vec![AdfNode::DecisionItem {
+                    attrs: DecisionItemAttrs {
+                        state: "DECIDED".into(),
+                        local_id: "item-1".into(),
+                    },
+                    content: vec![AdfNode::Text {
+                        text: "Decision content".into(),
+                        marks: None,
+                    }],
+                }],
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_table_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Table {
+                attrs: None,
+                content: vec![
+                    AdfNode::TableRow {
+                        content: vec![AdfNode::TableHeader {
+                            attrs: None,
+                            content: vec![AdfNode::Text {
+                                text: "Header".into(),
+                                marks: None,
+                            }],
+                        }],
+                    },
+                    AdfNode::TableRow {
+                        content: vec![AdfNode::TableCell {
+                            attrs: None,
+                            content: vec![AdfNode::Text {
+                                text: "Cell".into(),
+                                marks: None,
+                            }],
+                        }],
+                    },
+                ],
             }],
             version: 1,
         };

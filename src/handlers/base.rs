@@ -191,7 +191,6 @@ pub(crate) fn base_end_handlers() -> HashMap<String, HandlerFn> {
     handlers.insert(
         "li".to_string(),
         Box::new(|state: &mut ADFBuilderState, _element: Element| {
-            ADFBuilder::flush_text(state);
             ADFBuilder::close_current_list_item(state);
             true
         }) as HandlerFn,

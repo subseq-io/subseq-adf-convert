@@ -7,7 +7,8 @@ use html5ever::tokenizer::{
 };
 
 use crate::adf::adf_types::{
-    AdfMark, AdfNode, EmojiAttrs, LocalId, StatusAttrs, TaskItemAttrs, TaskItemState,
+    AdfMark, AdfNode, DecisionItemAttrs, EmojiAttrs, LocalId, StatusAttrs, TaskItemAttrs,
+    TaskItemState,
 };
 use crate::handlers::*;
 
@@ -69,31 +70,62 @@ impl ADFBuilder {
             custom_end_handlers: HashMap::new(),
         };
 
-        this.add_start_handler("adf-media-single", media_single_start_handler());
-        this.add_end_handler("adf-media-single", media_single_end_handler());
+        this.insert_start_handler("table", table_start_handler());
+        this.insert_end_handler("table", table_end_handler());
+        this.insert_start_handler("th", table_header_start_handler());
+        this.insert_end_handler("th", table_header_end_handler());
+        this.insert_start_handler("tr", table_row_start_handler());
+        this.insert_end_handler("tr", table_row_end_handler());
+        this.insert_start_handler("thead", table_section_start_handler());
+        this.insert_end_handler("thead", table_section_end_handler());
+        this.insert_start_handler("tbody", table_section_start_handler());
+        this.insert_end_handler("tbody", table_section_end_handler());
+        this.insert_start_handler("td", table_cell_start_handler());
+        this.insert_end_handler("td", table_cell_end_handler());
 
-        this.add_start_handler("adf-media-group", media_group_start_handler());
-        this.add_end_handler("adf-media-group", media_group_end_handler());
+        this.insert_start_handler("time", date_start_handler());
+        this.insert_end_handler("time", date_end_handler());
 
+        this.insert_start_handler("details", details_start_handler());
+        this.insert_end_handler("details", details_end_handler());
+
+        this.insert_start_handler("figure", figure_start_handler());
+        this.insert_end_handler("figure", figure_end_handler());
+
+        this.insert_end_handler("summary", summary_end_handler());
+
+        this.insert_start_handler("adf-mention", mention_start_handler());
+        this.insert_end_handler("adf-mention", mention_end_handler());
+
+        this.insert_start_handler("adf-media-single", media_single_start_handler());
+        this.insert_end_handler("adf-media-single", media_single_end_handler());
+
+        this.insert_start_handler("adf-media-group", media_group_start_handler());
+        this.insert_end_handler("adf-media-group", media_group_end_handler());
+
+        // Custom handlers
         this.add_start_handler("a", media_and_inline_card_start_handler());
         this.add_start_handler("img", media_and_inline_card_start_handler());
         this.add_end_handler("a", inline_card_end_handler());
 
-        this.add_start_handler("time", date_start_handler());
-        this.add_end_handler("time", date_end_handler());
-
-        this.add_end_handler("summary", summary_end_handler());
-
-        this.add_start_handler("details", details_start_handler());
-        this.add_end_handler("details", details_end_handler());
-
-        this.add_start_handler("figure", figure_start_handler());
-        this.add_end_handler("figure", figure_end_handler());
-
-        this.add_start_handler("adf-mention", mention_start_handler());
-        this.add_end_handler("adf-mention", mention_end_handler());
-
         this
+    }
+
+    fn insert_start_handler(
+        &mut self,
+        tag: &str,
+        handler: impl Fn(&mut ADFBuilderState, Element) -> bool + 'static,
+    ) {
+        self.start_handlers
+            .insert(tag.to_string(), Box::new(handler));
+    }
+
+    fn insert_end_handler(
+        &mut self,
+        tag: &str,
+        handler: impl Fn(&mut ADFBuilderState, Element) -> bool + 'static,
+    ) {
+        self.end_handlers.insert(tag.to_string(), Box::new(handler));
     }
 
     pub fn add_start_handler(
@@ -124,18 +156,19 @@ impl ADFBuilder {
                 Some(
                     BlockContext::Heading(_, _)
                         | BlockContext::Paragraph(_)
-                        | BlockContext::TableCell(_)
-                        | BlockContext::TableHeader(_)
+                        | BlockContext::TableBlock(TableBlockType::Cell, _)
+                        | BlockContext::TableBlock(TableBlockType::Header, _)
                         | BlockContext::Blockquote(_)
                         | BlockContext::ListItem(_)
                 )
             );
 
             if trim_for_blocks {
-                if text.trim().is_empty() {
-                    return;
-                }
                 text = clean_surrounding_text(&text).to_string();
+            }
+
+            if text.trim().is_empty() {
+                return;
             }
 
             let marks = if state.mark_stack.is_empty() {
@@ -150,8 +183,8 @@ impl ADFBuilder {
                     | BlockContext::Heading(_, nodes)
                     | BlockContext::Blockquote(nodes)
                     | BlockContext::ListItem(nodes)
-                    | BlockContext::TableCell(nodes)
-                    | BlockContext::TableHeader(nodes) => {
+                    | BlockContext::TableBlock(TableBlockType::Cell, nodes)
+                    | BlockContext::TableBlock(TableBlockType::Header, nodes) => {
                         let node = AdfNode::Text {
                             text: text.clone(),
                             marks,
@@ -165,7 +198,17 @@ impl ADFBuilder {
                         };
                         nodes.push(node);
                     }
+                    BlockContext::DecisionItem(nodes, _) => {
+                        let node = AdfNode::Text {
+                            text: text.trim().to_string(),
+                            marks,
+                        };
+                        nodes.push(node);
+                    }
                     BlockContext::CodeBlock(lines) => {
+                        if let Some(stripped) = text.strip_suffix('\n') {
+                            text = stripped.to_string();
+                        }
                         lines.push(text);
                     }
                     _ => {}
@@ -189,8 +232,9 @@ impl ADFBuilder {
         match frame {
             BlockContext::Paragraph(nodes) => match parent {
                 BlockContext::Document(parent_nodes)
-                | BlockContext::TableCell(parent_nodes)
-                | BlockContext::TableHeader(parent_nodes)
+                | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
+                | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
+                | BlockContext::Blockquote(parent_nodes)
                 | BlockContext::ListItem(parent_nodes) => parent_nodes.push(AdfNode::Paragraph {
                     content: Some(nodes),
                 }),
@@ -215,9 +259,10 @@ impl ADFBuilder {
             },
             BlockContext::CodeBlock(lines) => match parent {
                 BlockContext::Document(parent_nodes)
-                | BlockContext::TableCell(parent_nodes)
-                | BlockContext::TableHeader(parent_nodes)
-                | BlockContext::ListItem(parent_nodes) => {
+                | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
+                | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
+                | BlockContext::ListItem(parent_nodes)
+                | BlockContext::CustomBlock(CustomBlockType::Div, parent_nodes, _) => {
                     let text = lines.join("");
                     parent_nodes.push(AdfNode::CodeBlock {
                         content: Some(vec![AdfNode::Text {
@@ -231,9 +276,10 @@ impl ADFBuilder {
             },
             BlockContext::Blockquote(nodes) => match parent {
                 BlockContext::Document(parent_nodes)
-                | BlockContext::TableCell(parent_nodes)
-                | BlockContext::TableHeader(parent_nodes)
-                | BlockContext::ListItem(parent_nodes) => {
+                | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
+                | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
+                | BlockContext::ListItem(parent_nodes)
+                | BlockContext::CustomBlock(CustomBlockType::Div, parent_nodes, _) => {
                     parent_nodes.push(AdfNode::Blockquote { content: nodes })
                 }
                 _ => panic!("Invalid parent for Blockquote"),
@@ -247,8 +293,8 @@ impl ADFBuilder {
                 BlockContext::Document(parent_nodes)
                 | BlockContext::CustomBlock(CustomBlockType::Div, parent_nodes, _)
                 | BlockContext::Paragraph(parent_nodes)
-                | BlockContext::TableCell(parent_nodes)
-                | BlockContext::TableHeader(parent_nodes)
+                | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
+                | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
                 | BlockContext::ListItem(parent_nodes) => {
                     let is_task_list = local_tag
                         .as_ref()
@@ -293,6 +339,7 @@ impl ADFBuilder {
     }
 
     pub fn close_current_list_item(state: &mut ADFBuilderState) {
+        ADFBuilder::flush_text(state);
         let stack_item = state.stack.pop();
         if let Some(BlockContext::ListItem(nodes)) = stack_item {
             match state.stack.last_mut() {
@@ -314,6 +361,16 @@ impl ADFBuilder {
                 });
             } else {
                 panic!("TaskItem closed without PendingList parent");
+            }
+        } else if let Some(BlockContext::DecisionItem(nodes, local_id)) = stack_item {
+            if let Some(BlockContext::PendingList { nodes: list, .. }) = state.stack.last_mut() {
+                list.push(AdfNode::DecisionItem {
+                    content: nodes,
+                    attrs: DecisionItemAttrs {
+                        local_id,
+                        state: "DECIDED".to_string(),
+                    },
+                });
             }
         } else {
             panic!("Invalid context for ListItem close");
@@ -362,8 +419,9 @@ impl ADFBuilder {
             .last_mut()
             .expect("There should always be at least the Document node");
         match frame {
-            BlockContext::TableRow(nodes)
-            | BlockContext::Table(nodes)
+            BlockContext::TableBlock(TableBlockType::Row, nodes)
+            | BlockContext::TableBlock(TableBlockType::Section, nodes)
+            | BlockContext::TableBlock(TableBlockType::Table, nodes)
             | BlockContext::Paragraph(nodes)
             | BlockContext::Blockquote(nodes)
             | BlockContext::ListItem(nodes)
@@ -378,36 +436,6 @@ impl ADFBuilder {
             node => {
                 panic!("Invalid block context for block node: {node:?}");
             }
-        }
-    }
-
-    fn close_current_table_row(state: &mut ADFBuilderState) {
-        if let Some(BlockContext::TableRow(cells)) = state.stack.pop() {
-            Self::push_block_to_parent(state, AdfNode::TableRow { content: cells });
-        }
-    }
-
-    fn close_current_table_cell(state: &mut ADFBuilderState) {
-        if let Some(BlockContext::TableCell(content)) = state.stack.pop() {
-            Self::push_block_to_parent(
-                state,
-                AdfNode::TableCell {
-                    attrs: None,
-                    content,
-                },
-            );
-        }
-    }
-
-    fn close_current_table_header(state: &mut ADFBuilderState) {
-        if let Some(BlockContext::TableHeader(content)) = state.stack.pop() {
-            Self::push_block_to_parent(
-                state,
-                AdfNode::TableHeader {
-                    attrs: None,
-                    content,
-                },
-            );
         }
     }
 
@@ -537,8 +565,8 @@ impl TokenSink for ADFBuilder {
                                 BlockContext::Paragraph(_)
                                     | BlockContext::ListItem(_)
                                     | BlockContext::Blockquote(_)
-                                    | BlockContext::TableCell(_)
-                                    | BlockContext::TableHeader(_)
+                                    | BlockContext::TableBlock(TableBlockType::Cell, _)
+                                    | BlockContext::TableBlock(TableBlockType::Header, _)
                             )
                         ) {
                             Self::close_current_block(&mut state);
@@ -576,22 +604,6 @@ impl TokenSink for ADFBuilder {
                             Self::flush_text(&mut state);
                             state.stack.push(BlockContext::Paragraph(vec![]));
                         }
-                    }
-                    ("table", false) => {
-                        Self::flush_text(&mut state);
-                        state.stack.push(BlockContext::Table(vec![]));
-                    }
-                    ("tr", false) => {
-                        Self::flush_text(&mut state);
-                        state.stack.push(BlockContext::TableRow(vec![]));
-                    }
-                    ("td", false) => {
-                        Self::flush_text(&mut state);
-                        state.stack.push(BlockContext::TableCell(vec![]));
-                    }
-                    ("th", false) => {
-                        Self::flush_text(&mut state);
-                        state.stack.push(BlockContext::TableHeader(vec![]));
                     }
                     ("adf-local-data", _) => {
                         let local_id = attrs
@@ -675,29 +687,8 @@ impl TokenSink for ADFBuilder {
                 }
 
                 match name.as_ref() {
-                    "tr" => {
-                        Self::flush_text(&mut state);
-                        Self::close_current_table_row(&mut state);
-                    }
-                    "td" => {
-                        Self::flush_text(&mut state);
-                        Self::close_current_table_cell(&mut state);
-                    }
-                    "th" => {
-                        Self::flush_text(&mut state);
-                        Self::close_current_table_header(&mut state);
-                    }
-                    "table" => {
-                        Self::flush_text(&mut state);
-                        if let Some(BlockContext::Table(rows)) = state.stack.pop() {
-                            Self::push_block_to_parent(
-                                &mut state,
-                                AdfNode::Table {
-                                    attrs: None,
-                                    content: rows,
-                                },
-                            );
-                        }
+                    "adf-decision-item" => {
+                        Self::close_current_decision_item(&mut state);
                     }
                     "code" => {
                         Self::flush_text(&mut state);
