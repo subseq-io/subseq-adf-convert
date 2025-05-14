@@ -6,7 +6,7 @@ use crate::{
         AdfNode, EmojiAttrs, LinkMark, LocalId, MediaAttrs, MediaMark, MediaNode, MediaSingleAttrs,
         StatusAttrs,
     },
-    html::{ADFBuilder, HandlerFn, extract_style},
+    html_to_adf::{ADFBuilder, HandlerFn, extract_style},
 };
 
 pub(crate) fn media_single_start_handler() -> HandlerFn {

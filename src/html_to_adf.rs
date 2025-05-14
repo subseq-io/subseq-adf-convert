@@ -6,9 +6,7 @@ use html5ever::tokenizer::{
     BufferQueue, Tag, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
 };
 
-use crate::adf::adf_types::{
-    AdfMark, AdfNode, DecisionItemAttrs, LocalId, TaskItemAttrs,
-};
+use crate::adf::adf_types::{AdfMark, AdfNode, DecisionItemAttrs, LocalId, TaskItemAttrs};
 use crate::handlers::*;
 
 /// Cleans surrounding text by removing leading and trailing whitespace before and after newlines
@@ -86,7 +84,7 @@ impl ADFBuilder {
 
         this.insert_start_handler("blockquote", blockquote_start_handler());
         this.insert_end_handler("blockquote", blockquote_end_handler());
-        
+
         this.insert_start_handler("em", em_start_handler());
         this.insert_start_handler("strong", strong_start_handler());
         this.insert_start_handler("del", del_start_handler());
@@ -94,12 +92,12 @@ impl ADFBuilder {
         this.insert_start_handler("u", u_start_handler());
         this.insert_start_handler("sub", sub_start_handler());
         this.insert_start_handler("sup", sup_start_handler());
-        
+
         // For all mark tags use same generic mark handler
         for tag in &["em", "strong", "del", "a", "u", "sub", "sup"] {
             this.insert_end_handler(tag, mark_end_handler());
         }
-        
+
         for i in 1..=6 {
             let tag = format!("h{}", i);
             this.insert_start_handler(&tag, header_start_handler(i));
@@ -363,9 +361,6 @@ impl ADFBuilder {
                         .as_ref()
                         .map(|tag| tag == "decision-list")
                         .unwrap_or(false);
-                    eprintln!(
-                        "PendingList closed with {nodes:?} (ordered: {ordered:?}) {local_id:?} {local_tag:?}"
-                    );
                     if is_task_list {
                         parent_nodes.push(AdfNode::TaskList {
                             attrs: LocalId {
@@ -472,7 +467,6 @@ impl ADFBuilder {
     }
 
     pub fn push_block_to_parent(state: &mut ADFBuilderState, node: AdfNode) {
-        eprintln!("push_block_to_parent: {node:?} {:?}", state.stack);
         let frame = state
             .stack
             .last_mut()
@@ -599,7 +593,7 @@ impl TokenSink for ADFBuilder {
     }
 }
 
-pub fn parse_html(input: &str) -> AdfNode {
+pub fn html_to_adf(input: &str) -> AdfNode {
     let mut queue: BufferQueue = Default::default();
     queue.push_back(Tendril::from_slice(input));
 
@@ -651,7 +645,7 @@ mod tests {
 
     #[test]
     fn test_blockquote() {
-        let adf = parse_html(r#"<blockquote>Quoted text.</blockquote>"#);
+        let adf = html_to_adf(r#"<blockquote>Quoted text.</blockquote>"#);
         assert_content_eq(
             adf,
             vec![AdfNode::Blockquote {
@@ -665,7 +659,7 @@ mod tests {
 
     #[test]
     fn test_bullet_list_with_list_items() {
-        let adf = parse_html(r#"<ul><li>Item one</li><li>Item two</li></ul>"#);
+        let adf = html_to_adf(r#"<ul><li>Item one</li><li>Item two</li></ul>"#);
         assert_content_eq(
             adf,
             vec![AdfNode::BulletList {
@@ -689,7 +683,7 @@ mod tests {
 
     #[test]
     fn test_ordered_list_with_list_items() {
-        let adf = parse_html(r#"<ol><li>Item one</li><li>Item two</li></ol>"#);
+        let adf = html_to_adf(r#"<ol><li>Item one</li><li>Item two</li></ol>"#);
         assert_content_eq(
             adf,
             vec![AdfNode::OrderedList {
@@ -714,7 +708,7 @@ mod tests {
 
     #[test]
     fn test_combined_marks_splitting() {
-        let adf = parse_html(
+        let adf = html_to_adf(
             r#"<p>Some text <a href="https://www.example.com">examples</a> are <strong><em>complicated</em></strong></p>"#,
         );
         assert_content_eq(
@@ -747,7 +741,7 @@ mod tests {
 
     #[test]
     fn test_subsup_underline() {
-        let adf = parse_html(
+        let adf = html_to_adf(
             r#"<p>This is <u>underlined</u> and <sub>subscript</sub> and <sup>superscript</sup>.</p>"#,
         );
         assert_content_eq(
@@ -789,7 +783,7 @@ mod tests {
 
     #[test]
     fn test_span_styles() {
-        let adf = parse_html(
+        let adf = html_to_adf(
             r#"<p><span style="color: red">red text</span> and <span style="background-color: yellow">yellow background</span>.</p>"#,
         );
         assert_content_eq(
@@ -823,7 +817,7 @@ mod tests {
 
     #[test]
     fn test_span_combined_styles() {
-        let adf = parse_html(
+        let adf = html_to_adf(
             r#"<p><span style="color: green; background-color: black">styled text</span></p>"#,
         );
         assert_content_eq(
@@ -846,7 +840,7 @@ mod tests {
 
     #[test]
     fn test_code_inside_pre_and_outside_pre() {
-        let adf = parse_html(
+        let adf = html_to_adf(
             r#"<pre><code>let x = 42;</code></pre><p>This is <code>inline code</code>.</p>"#,
         );
         assert_content_eq(
@@ -881,7 +875,7 @@ mod tests {
 
     #[test]
     fn test_html_table_parsing() {
-        let adf = parse_html(
+        let adf = html_to_adf(
             r#"
             <table>
                 <tr>
@@ -976,7 +970,7 @@ mod tests {
 
     #[test]
     fn test_br_inside_paragraph() {
-        let adf = parse_html(r#"<p>First line<br/>Second line</p>"#);
+        let adf = html_to_adf(r#"<p>First line<br/>Second line</p>"#);
         assert_content_eq(
             adf,
             vec![AdfNode::Paragraph {
@@ -997,7 +991,7 @@ mod tests {
 
     #[test]
     fn test_hr_between_paragraphs() {
-        let adf = parse_html(r#"<p>Before rule</p><hr/><p>After rule</p>"#);
+        let adf = html_to_adf(r#"<p>Before rule</p><hr/><p>After rule</p>"#);
         assert_content_eq(
             adf,
             vec![
@@ -1020,7 +1014,7 @@ mod tests {
 
     #[test]
     fn test_headings_parsing() {
-        let adf = parse_html(
+        let adf = html_to_adf(
             r#"
             <h1>Main Heading</h1>
             <h2>Sub Heading</h2>

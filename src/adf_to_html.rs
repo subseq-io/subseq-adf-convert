@@ -3,17 +3,10 @@ use std::fmt::Write;
 
 use crate::html_builder::*;
 
-use crate::{
-    adf::adf_types::{AdfMark, AdfNode, MediaMark, MediaNode, Subsup, TaskItemState},
-    html::parse_html,
-};
+use crate::adf::adf_types::{AdfMark, AdfNode, MediaMark, MediaNode, Subsup, TaskItemState};
 
 pub fn close(node: Void) {
     node.attr("/");
-}
-
-pub fn html_to_adf(html: String) -> AdfNode {
-    parse_html(&html)
 }
 
 pub fn adf_to_html(adf: Vec<AdfNode>) -> String {
@@ -361,12 +354,13 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
 mod tests {
     use super::*;
     use crate::adf::adf_types::*;
+    use crate::html_to_adf::html_to_adf;
     use crate::markdown::{adf_to_markdown, markdown_to_adf};
 
     fn roundtrip_adf_html_adf(adf: AdfNode) {
         let html = adf_to_html(vec![adf.clone()]);
         eprintln!("\n\nHTML:\n{}\n\n", html);
-        let back = html_to_adf(html);
+        let back = html_to_adf(&html);
         assert_eq!(back, adf, "Failed roundtrip adf -> html -> adf");
     }
 

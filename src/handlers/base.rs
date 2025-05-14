@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::{ADFBuilderState, BlockContext, CustomBlockType, Element, TableBlockType};
 use crate::{
     adf::adf_types::{AdfMark, AdfNode, HeadingAttrs, LinkMark, Subsup},
-    html::{ADFBuilder, HandlerFn, extract_style},
+    html_to_adf::{ADFBuilder, HandlerFn, extract_style},
 };
 
 pub(crate) fn hard_break_start_handler() -> HandlerFn {
@@ -126,16 +126,9 @@ pub(crate) fn div_start_handler() -> HandlerFn {
 
         let mut node_attrs = HashMap::new();
         for attr in element.attrs {
-            node_attrs.insert(
-                attr.name.local.as_ref().to_string(),
-                attr.value.to_string(),
-            );
+            node_attrs.insert(attr.name.local.as_ref().to_string(), attr.value.to_string());
         }
-        let block = BlockContext::CustomBlock(
-            CustomBlockType::Div,
-            vec![],
-            node_attrs,
-        );
+        let block = BlockContext::CustomBlock(CustomBlockType::Div, vec![], node_attrs);
         state.stack.push(block);
 
         true
@@ -290,7 +283,11 @@ pub(crate) fn del_start_handler() -> HandlerFn {
 pub(crate) fn a_start_handler() -> HandlerFn {
     Box::new(|state, element| {
         ADFBuilder::flush_text(state);
-        if let Some(href) = element.attrs.iter().find(|attr| attr.name.local.as_ref() == "href") {
+        if let Some(href) = element
+            .attrs
+            .iter()
+            .find(|attr| attr.name.local.as_ref() == "href")
+        {
             state.mark_stack.push(AdfMark::Link(LinkMark {
                 href: href.value.to_string(),
                 ..Default::default()
@@ -311,7 +308,9 @@ pub(crate) fn u_start_handler() -> HandlerFn {
 pub(crate) fn sub_start_handler() -> HandlerFn {
     Box::new(|state, _| {
         ADFBuilder::flush_text(state);
-        state.mark_stack.push(AdfMark::Subsup { type_: Subsup::Sub });
+        state
+            .mark_stack
+            .push(AdfMark::Subsup { type_: Subsup::Sub });
         true
     })
 }
@@ -319,7 +318,9 @@ pub(crate) fn sub_start_handler() -> HandlerFn {
 pub(crate) fn sup_start_handler() -> HandlerFn {
     Box::new(|state, _| {
         ADFBuilder::flush_text(state);
-        state.mark_stack.push(AdfMark::Subsup { type_: Subsup::Sup });
+        state
+            .mark_stack
+            .push(AdfMark::Subsup { type_: Subsup::Sup });
         true
     })
 }

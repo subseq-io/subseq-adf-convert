@@ -1,6 +1,6 @@
 use crate::{
     adf::adf_types::AdfNode,
-    html::{ADFBuilder, HandlerFn},
+    html_to_adf::{ADFBuilder, HandlerFn},
 };
 
 use super::{ADFBuilderState, BlockContext, TableBlockType};
@@ -8,7 +8,9 @@ use super::{ADFBuilderState, BlockContext, TableBlockType};
 pub(crate) fn table_start_handler() -> HandlerFn {
     Box::new(|state, _element| {
         ADFBuilder::flush_text(state);
-        state.stack.push(BlockContext::TableBlock(TableBlockType::Table, vec![]));
+        state
+            .stack
+            .push(BlockContext::TableBlock(TableBlockType::Table, vec![]));
         true
     })
 }
@@ -16,7 +18,9 @@ pub(crate) fn table_start_handler() -> HandlerFn {
 pub(crate) fn table_section_start_handler() -> HandlerFn {
     Box::new(|state, _element| {
         ADFBuilder::flush_text(state);
-        state.stack.push(BlockContext::TableBlock(TableBlockType::Section, vec![]));
+        state
+            .stack
+            .push(BlockContext::TableBlock(TableBlockType::Section, vec![]));
         true
     })
 }
@@ -24,7 +28,9 @@ pub(crate) fn table_section_start_handler() -> HandlerFn {
 pub(crate) fn table_section_end_handler() -> HandlerFn {
     Box::new(|state, _element| {
         ADFBuilder::flush_text(state);
-        if let Some(BlockContext::TableBlock(TableBlockType::Section, section_rows)) = state.stack.pop() {
+        if let Some(BlockContext::TableBlock(TableBlockType::Section, section_rows)) =
+            state.stack.pop()
+        {
             for row in section_rows {
                 ADFBuilder::push_block_to_parent(state, row);
             }
@@ -38,7 +44,9 @@ pub(crate) fn table_section_end_handler() -> HandlerFn {
 pub(crate) fn table_row_start_handler() -> HandlerFn {
     Box::new(|state, _element| {
         ADFBuilder::flush_text(state);
-        state.stack.push(BlockContext::TableBlock(TableBlockType::Row, vec![]));
+        state
+            .stack
+            .push(BlockContext::TableBlock(TableBlockType::Row, vec![]));
         true
     })
 }
@@ -46,7 +54,9 @@ pub(crate) fn table_row_start_handler() -> HandlerFn {
 pub(crate) fn table_cell_start_handler() -> HandlerFn {
     Box::new(|state, _element| {
         ADFBuilder::flush_text(state);
-        state.stack.push(BlockContext::TableBlock(TableBlockType::Cell, vec![]));
+        state
+            .stack
+            .push(BlockContext::TableBlock(TableBlockType::Cell, vec![]));
         true
     })
 }
@@ -54,7 +64,9 @@ pub(crate) fn table_cell_start_handler() -> HandlerFn {
 pub(crate) fn table_header_start_handler() -> HandlerFn {
     Box::new(|state, _element| {
         ADFBuilder::flush_text(state);
-        state.stack.push(BlockContext::TableBlock(TableBlockType::Header, vec![]));
+        state
+            .stack
+            .push(BlockContext::TableBlock(TableBlockType::Header, vec![]));
         true
     })
 }

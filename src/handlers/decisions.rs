@@ -1,4 +1,4 @@
-use crate::html::{ADFBuilder, HandlerFn};
+use crate::html_to_adf::{ADFBuilder, HandlerFn};
 
 use super::{ADFBuilderState, BlockContext, Element};
 

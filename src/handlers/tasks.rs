@@ -1,5 +1,5 @@
 use super::{ADFBuilderState, BlockContext, Element};
-use crate::{adf::adf_types::TaskItemState, html::HandlerFn};
+use crate::{adf::adf_types::TaskItemState, html_to_adf::HandlerFn};
 
 pub(crate) fn input_start_handler() -> HandlerFn {
     Box::new(|state: &mut ADFBuilderState, element: Element| {

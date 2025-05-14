@@ -4,7 +4,8 @@ use markup5ever_rcdom::{Handle, NodeData};
 
 use crate::{
     adf::adf_types::AdfNode,
-    convert::{adf_to_html, html_to_adf},
+    adf_to_html::adf_to_html,
+    html_to_adf::html_to_adf,
 };
 
 pub(crate) fn table_handler(element: Element) -> Option<String> {
@@ -167,6 +168,5 @@ pub fn markdown_to_adf(markdown: &str) -> Option<AdfNode> {
             tracing::warn!("Failed to convert markdown to HTML: {}", err);
         })
         .unwrap_or_default();
-    eprintln!("\n\nHTML:\n{}\n\n", html);
-    Some(html_to_adf(html))
+    Some(html_to_adf(&html))
 }
