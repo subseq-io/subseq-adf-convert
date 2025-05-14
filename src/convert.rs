@@ -209,7 +209,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     mention = mention.attr(&format!("data-access-level=\"{}\"", access_level));
                 }
                 if let Some(text) = &attrs.text {
-                    writeln!(mention, "@{}", text).ok();
+                    writeln!(mention, "{}", text).ok();
                 }
             }
             AdfNode::NestedExpand { content, attrs } => {
@@ -232,7 +232,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 }
             }
             AdfNode::Rule => {
-                node.hr();
+                close(node.hr());
             }
             AdfNode::Status { attrs } => {
                 let mut status = node.child(Cow::Borrowed("adf-status")).attr(&format!(
@@ -335,10 +335,15 @@ pub fn html_to_markdown(html: String) -> String {
     let converter = HtmlToMarkdown::builder()
         .add_handler(
             vec![
+                "a",
                 "img",
+                "time",
                 "input",
                 "figure",
+                "details",
+                "summary",
                 "adf-emoji",
+                "adf-mention",
                 "adf-status",
                 "adf-media-single",
                 "adf-media-group",
@@ -553,6 +558,158 @@ mod tests {
                         },
                     },
                 ]),
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_expand_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Expand {
+                attrs: ExpandAttrs {
+                    title: Some("Expand Title".into()),
+                },
+                content: vec![AdfNode::Paragraph {
+                    content: Some(vec![AdfNode::Text {
+                        text: "Expandable content".into(),
+                        marks: None,
+                    }]),
+                }],
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_nested_expand_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::NestedExpand {
+                attrs: NestedAttrs {
+                    title: "Nested Title".into(),
+                },
+                content: vec![AdfNode::Paragraph {
+                    content: Some(vec![AdfNode::Text {
+                        text: "Nested content".into(),
+                        marks: None,
+                    }]),
+                }],
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_date_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Paragraph {
+                content: Some(vec![AdfNode::Date {
+                    attrs: DateAttrs {
+                        timestamp: "1700000000".into(),
+                    },
+                }]),
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_mention_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Paragraph {
+                content: Some(vec![AdfNode::Mention {
+                    attrs: MentionAttrs {
+                        id: "user-1".into(),
+                        text: Some("Mentioned User".into()),
+                        access_level: Some("admin".into()),
+                        user_type: Some("app".into()),
+                    },
+                }]),
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_inline_card_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Paragraph {
+                content: Some(vec![AdfNode::InlineCard {
+                    attrs: InlineCardAttrs {
+                        url: Some("https://example.com".into()),
+                    },
+                }]),
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_rule_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Rule],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_bullet_list_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::BulletList {
+                content: vec![
+                    AdfNode::ListItem {
+                        content: vec![AdfNode::Text {
+                            text: "Bullet 1".into(),
+                            marks: None,
+                        }],
+                    },
+                    AdfNode::ListItem {
+                        content: vec![AdfNode::Text {
+                            text: "Bullet 2".into(),
+                            marks: None,
+                        }],
+                    },
+                ],
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_ordered_list_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::OrderedList {
+                content: vec![
+                    AdfNode::ListItem {
+                        content: vec![AdfNode::Text {
+                            text: "Ordered 1".into(),
+                            marks: None,
+                        }],
+                    },
+                    AdfNode::ListItem {
+                        content: vec![AdfNode::Text {
+                            text: "Ordered 2".into(),
+                            marks: None,
+                        }],
+                    },
+                ],
+                attrs: None,
             }],
             version: 1,
         };

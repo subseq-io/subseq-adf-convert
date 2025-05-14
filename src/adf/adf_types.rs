@@ -132,6 +132,24 @@ impl AdfNode {
     pub fn is_task_item(&self) -> bool {
         matches!(self, Self::TaskItem { .. })
     }
+
+    pub fn is_top_level_block(&self) -> bool {
+        matches!(
+            self,
+            AdfNode::Expand { .. }
+                | AdfNode::NestedExpand { .. }
+                | AdfNode::Panel { .. }
+                | AdfNode::TaskList { .. }
+                | AdfNode::DecisionList { .. }
+                | AdfNode::MediaGroup { .. }
+                | AdfNode::MediaSingle { .. }
+                | AdfNode::Table { .. }
+                | AdfNode::Rule
+                | AdfNode::Heading { .. }
+                | AdfNode::Blockquote { .. }
+                | AdfNode::Paragraph { .. }
+        )
+    }
 }
 
 #[derive(Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]

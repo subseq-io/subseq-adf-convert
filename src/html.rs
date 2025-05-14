@@ -75,14 +75,17 @@ impl ADFBuilder {
         this.add_start_handler("adf-media-group", media_group_start_handler());
         this.add_end_handler("adf-media-group", media_group_end_handler());
 
-        this.add_start_handler("a", media_start_handler());
-        this.add_start_handler("img", media_start_handler());
+        this.add_start_handler("a", media_and_inline_card_start_handler());
+        this.add_start_handler("img", media_and_inline_card_start_handler());
+        this.add_end_handler("a", inline_card_end_handler());
 
         this.add_start_handler("time", date_start_handler());
         this.add_end_handler("time", date_end_handler());
 
-        this.add_start_handler("detail", details_start_handler());
-        this.add_end_handler("detail", details_end_handler());
+        this.add_end_handler("summary", summary_end_handler());
+
+        this.add_start_handler("details", details_start_handler());
+        this.add_end_handler("details", details_end_handler());
 
         this.add_start_handler("figure", figure_start_handler());
         this.add_end_handler("figure", figure_end_handler());
@@ -191,19 +194,23 @@ impl ADFBuilder {
                 | BlockContext::ListItem(parent_nodes) => parent_nodes.push(AdfNode::Paragraph {
                     content: Some(nodes),
                 }),
-                BlockContext::CustomBlock(block_ty, parent_nodes, _) => {
-                    if *block_ty == CustomBlockType::Div {
+                BlockContext::CustomBlock(block_ty, parent_nodes, _) => match block_ty {
+                    CustomBlockType::Div => {
                         parent_nodes.push(AdfNode::Paragraph {
                             content: Some(nodes),
                         });
-                    } else if *block_ty == CustomBlockType::Panel {
+                    }
+                    CustomBlockType::Expand
+                    | CustomBlockType::NestedExpand
+                    | CustomBlockType::Panel => {
                         parent_nodes.push(AdfNode::Paragraph {
                             content: Some(nodes),
                         });
-                    } else {
+                    }
+                    parent => {
                         panic!("Invalid parent for Paragraph: {parent:?}");
                     }
-                }
+                },
                 parent => panic!("Invalid parent for Paragraph: {parent:?}"),
             },
             BlockContext::CodeBlock(lines) => match parent {
@@ -349,6 +356,7 @@ impl ADFBuilder {
     }
 
     pub fn push_block_to_parent(state: &mut ADFBuilderState, node: AdfNode) {
+        eprintln!("push_block_to_parent: {node:?} {:?}", state.stack);
         let frame = state
             .stack
             .last_mut()
@@ -711,6 +719,10 @@ impl TokenSink for ADFBuilder {
                                 .iter()
                                 .all(|n| matches!(n, AdfNode::Text { .. } | AdfNode::HardBreak));
                             if all_inline {
+                                if nodes.is_empty() {
+                                    return TokenSinkResult::Continue;
+                                }
+
                                 let paragraph = AdfNode::Paragraph {
                                     content: Some(nodes),
                                 };
@@ -742,6 +754,9 @@ impl TokenSink for ADFBuilder {
                                     Self::push_block_to_parent(&mut state, paragraph);
                                 }
                             } else {
+                                if nodes.is_empty() {
+                                    return TokenSinkResult::Continue;
+                                }
                                 // treat as transparent container, discard style, forward content
                                 for node in nodes {
                                     Self::push_block_to_parent(&mut state, node);

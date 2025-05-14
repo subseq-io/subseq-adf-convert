@@ -51,6 +51,7 @@ pub enum BlockContext {
     CustomBlock(CustomBlockType, Vec<AdfNode>, HashMap<String, String>),
     MediaBlock(MediaBlockType, Vec<MediaNode>, HashMap<String, String>),
     Heading(u8, Vec<AdfNode>),
+    Summary(Vec<AdfNode>),
     Paragraph(Vec<AdfNode>),
     Table(Vec<AdfNode>),
     TableCell(Vec<AdfNode>),
