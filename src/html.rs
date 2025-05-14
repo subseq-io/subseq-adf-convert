@@ -7,8 +7,7 @@ use html5ever::tokenizer::{
 };
 
 use crate::adf::adf_types::{
-    AdfMark, AdfNode, DecisionItemAttrs, EmojiAttrs, LocalId, StatusAttrs, TaskItemAttrs,
-    TaskItemState,
+    AdfMark, AdfNode, DecisionItemAttrs, LocalId, TaskItemAttrs,
 };
 use crate::handlers::*;
 
@@ -64,11 +63,48 @@ impl ADFBuilder {
                 custom_block_id: None,
                 custom_block_tag: None,
             }),
-            start_handlers: base_start_handlers(),
+            start_handlers: HashMap::new(),
             custom_start_handlers: HashMap::new(),
-            end_handlers: base_end_handlers(),
+            end_handlers: HashMap::new(),
             custom_end_handlers: HashMap::new(),
         };
+
+        this.insert_start_handler("ul", ul_start_handler());
+        this.insert_end_handler("ul", ul_end_handler());
+
+        this.insert_start_handler("ol", ol_start_handler());
+        this.insert_end_handler("ol", ol_end_handler());
+
+        this.insert_start_handler("li", li_start_handler());
+        this.insert_end_handler("li", li_end_handler());
+
+        this.insert_start_handler("p", p_start_handler());
+        this.insert_end_handler("p", p_end_handler());
+
+        this.insert_start_handler("pre", pre_start_handler());
+        this.insert_end_handler("pre", pre_end_handler());
+
+        this.insert_start_handler("blockquote", blockquote_start_handler());
+        this.insert_end_handler("blockquote", blockquote_end_handler());
+        
+        this.insert_start_handler("em", em_start_handler());
+        this.insert_start_handler("strong", strong_start_handler());
+        this.insert_start_handler("del", del_start_handler());
+        this.insert_start_handler("a", a_start_handler());
+        this.insert_start_handler("u", u_start_handler());
+        this.insert_start_handler("sub", sub_start_handler());
+        this.insert_start_handler("sup", sup_start_handler());
+        
+        // For all mark tags use same generic mark handler
+        for tag in &["em", "strong", "del", "a", "u", "sub", "sup"] {
+            this.insert_end_handler(tag, mark_end_handler());
+        }
+        
+        for i in 1..=6 {
+            let tag = format!("h{}", i);
+            this.insert_start_handler(&tag, header_start_handler(i));
+            this.insert_end_handler(&tag, header_end_handler(i));
+        }
 
         this.insert_start_handler("table", table_start_handler());
         this.insert_end_handler("table", table_end_handler());
@@ -83,6 +119,17 @@ impl ADFBuilder {
         this.insert_start_handler("td", table_cell_start_handler());
         this.insert_end_handler("td", table_cell_end_handler());
 
+        this.insert_start_handler("br", hard_break_start_handler());
+        this.insert_start_handler("hr", rule_start_handler());
+
+        this.insert_start_handler("code", code_start_handler());
+        this.insert_end_handler("code", code_end_handler());
+        this.insert_start_handler("div", div_start_handler());
+        this.insert_end_handler("div", div_end_handler());
+
+        this.insert_start_handler("span", span_start_handler());
+        this.insert_end_handler("span", span_end_handler());
+
         this.insert_start_handler("time", date_start_handler());
         this.insert_end_handler("time", date_end_handler());
 
@@ -94,8 +141,20 @@ impl ADFBuilder {
 
         this.insert_end_handler("summary", summary_end_handler());
 
+        this.insert_start_handler("input", input_start_handler());
+        this.insert_start_handler("adf-local-data", local_data_start_handler());
+
+        this.insert_start_handler("adf-status", status_start_handler());
+        this.insert_end_handler("adf-status", status_end_handler());
+
+        this.insert_start_handler("adf-emoji", emoji_start_handler());
+        this.insert_end_handler("adf-emoji", emoji_end_handler());
+
         this.insert_start_handler("adf-mention", mention_start_handler());
         this.insert_end_handler("adf-mention", mention_end_handler());
+
+        this.insert_start_handler("adf-decision-item", decision_start_handler());
+        this.insert_end_handler("adf-decision-item", decision_end_handler());
 
         this.insert_start_handler("adf-media-single", media_single_start_handler());
         this.insert_end_handler("adf-media-single", media_single_end_handler());
@@ -217,7 +276,7 @@ impl ADFBuilder {
         }
     }
 
-    fn pop_mark(state: &mut ADFBuilderState, pred: impl Fn(&AdfMark) -> bool) {
+    pub fn pop_mark(state: &mut ADFBuilderState, pred: impl Fn(&AdfMark) -> bool) {
         if let Some(pos) = state.mark_stack.iter().rposition(pred) {
             state.mark_stack.remove(pos);
         }
@@ -407,7 +466,7 @@ impl ADFBuilder {
         }
     }
 
-    fn flush_text_and_push_inline(state: &mut ADFBuilderState, node: AdfNode) {
+    pub fn flush_text_and_push_inline(state: &mut ADFBuilderState, node: AdfNode) {
         Self::flush_text(state);
         Self::push_inline(state, node);
     }
@@ -439,7 +498,7 @@ impl ADFBuilder {
         }
     }
 
-    fn extract_text(paragraph: &AdfNode) -> String {
+    pub fn extract_text(paragraph: &AdfNode) -> String {
         match paragraph {
             AdfNode::Paragraph {
                 content: Some(nodes),
@@ -501,160 +560,6 @@ impl TokenSink for ADFBuilder {
                         self_closing,
                     };
                     handler(&mut state, element);
-                    return TokenSinkResult::Continue;
-                }
-
-                match (name.as_ref(), self_closing) {
-                    ("adf-decision-item", _) => {
-                        let local_id = attrs
-                            .iter()
-                            .find(|attr| attr.name.local.as_ref() == "id")
-                            .map(|id| id.value.to_string())
-                            .unwrap_or_default();
-                        let decision_item = BlockContext::DecisionItem(vec![], local_id);
-                        state.stack.push(decision_item);
-                    }
-                    ("input", _) => {
-                        // Check if inside TaskItem, and if input type is checkbox
-                        let stack_back = state.stack.pop();
-                        match stack_back {
-                            Some(BlockContext::ListItem(inner)) => {
-                                if let Some(input_type) =
-                                    attrs.iter().find(|attr| attr.name.local.as_ref() == "type")
-                                {
-                                    if input_type.value.eq_ignore_ascii_case("checkbox") {
-                                        let checked = attrs
-                                            .iter()
-                                            .any(|attr| attr.name.local.as_ref() == "checked");
-                                        let item_state = if checked {
-                                            TaskItemState::Done
-                                        } else {
-                                            TaskItemState::Todo
-                                        };
-
-                                        let task_item = BlockContext::TaskItem(
-                                            inner,
-                                            item_state,
-                                            attrs
-                                                .iter()
-                                                .find(|attr| attr.name.local.as_ref() == "id")
-                                                .map(|id| id.value.to_string())
-                                                .unwrap_or_default(),
-                                        );
-                                        state.stack.push(task_item);
-                                    } else {
-                                        state.stack.push(BlockContext::ListItem(inner));
-                                    }
-                                }
-                            }
-                            Some(item) => {
-                                state.stack.push(item);
-                            }
-                            None => {}
-                        }
-                    }
-                    ("br", true) => {
-                        Self::flush_text_and_push_inline(&mut state, AdfNode::HardBreak);
-                    }
-                    ("hr", true) => {
-                        Self::flush_text(&mut state);
-                        // Close any open block contexts that cannot contain Rule
-                        while matches!(
-                            state.stack.last(),
-                            Some(
-                                BlockContext::Paragraph(_)
-                                    | BlockContext::ListItem(_)
-                                    | BlockContext::Blockquote(_)
-                                    | BlockContext::TableBlock(TableBlockType::Cell, _)
-                                    | BlockContext::TableBlock(TableBlockType::Header, _)
-                            )
-                        ) {
-                            Self::close_current_block(&mut state);
-                        }
-                        Self::push_block_to_parent(&mut state, AdfNode::Rule);
-                    }
-                    ("code", false) => {
-                        Self::flush_text(&mut state);
-                        let in_pre = state
-                            .stack
-                            .iter()
-                            .any(|ctx| matches!(ctx, BlockContext::CodeBlock(_)));
-                        if !in_pre {
-                            state.mark_stack.push(AdfMark::Code);
-                        }
-                        // If inside <pre>, do nothing (handled purely as block)
-                    }
-                    ("span", false) => {
-                        // Check style for color or background-color
-                        Self::flush_text(&mut state);
-                        if let Some(style_attr) = attrs
-                            .iter()
-                            .find(|attr| attr.name.local.as_ref() == "style")
-                        {
-                            let style = style_attr.value.to_ascii_lowercase();
-                            if let Some(color) = extract_style(&style, "color") {
-                                state.mark_stack.push(AdfMark::TextColor { color });
-                            }
-                            if let Some(bg) = extract_style(&style, "background-color") {
-                                state
-                                    .mark_stack
-                                    .push(AdfMark::BackgroundColor { color: bg });
-                            }
-                        } else {
-                            Self::flush_text(&mut state);
-                            state.stack.push(BlockContext::Paragraph(vec![]));
-                        }
-                    }
-                    ("adf-local-data", _) => {
-                        let local_id = attrs
-                            .iter()
-                            .find(|attr| attr.name.local.as_ref() == "id")
-                            .map(|id| id.value.to_string());
-                        state.custom_block_id = local_id.map(|id| LocalId { local_id: id });
-                        eprintln!(
-                            "adf-local-data custom block id: {:?}",
-                            state.custom_block_id
-                        );
-
-                        let tag = attrs
-                            .iter()
-                            .find(|attr| attr.name.local.as_ref() == "data-tag")
-                            .map(|id| id.value.to_string());
-                        state.custom_block_tag = tag.map(|tag| tag.to_string());
-                        eprintln!(
-                            "adf-local-data custom block tag: {:?}",
-                            state.custom_block_tag
-                        );
-                    }
-                    ("adf-status", false) | ("adf-emoji", false) | ("div", false) => {
-                        Self::flush_text(&mut state);
-
-                        let mut node_attrs = HashMap::new();
-                        for attr in attrs {
-                            node_attrs.insert(
-                                attr.name.local.as_ref().to_string(),
-                                attr.value.to_string(),
-                            );
-                        }
-                        let block = BlockContext::CustomBlock(
-                            match name.as_ref() {
-                                "adf-status" => {
-                                    state.current_text.clear();
-                                    CustomBlockType::Status
-                                }
-                                "adf-emoji" => {
-                                    state.current_text.clear();
-                                    CustomBlockType::Emoji
-                                }
-                                "div" => CustomBlockType::Div,
-                                _ => unreachable!(),
-                            },
-                            vec![],
-                            node_attrs,
-                        );
-                        state.stack.push(block);
-                    }
-                    _ => {}
                 }
             }
             Token::TagToken(Tag {
@@ -683,155 +588,6 @@ impl TokenSink for ADFBuilder {
                             self_closing,
                         },
                     );
-                    return TokenSinkResult::Continue;
-                }
-
-                match name.as_ref() {
-                    "adf-decision-item" => {
-                        Self::close_current_decision_item(&mut state);
-                    }
-                    "code" => {
-                        Self::flush_text(&mut state);
-                        let in_pre = state
-                            .stack
-                            .iter()
-                            .any(|ctx| matches!(ctx, BlockContext::CodeBlock(_)));
-                        if !in_pre {
-                            Self::pop_mark(&mut state, |m| matches!(m, AdfMark::Code));
-                        }
-                        // Inside <pre>, no mark to pop
-                    }
-                    "div" => {
-                        Self::flush_text(&mut state);
-                        if let Some(BlockContext::CustomBlock(CustomBlockType::Div, nodes, attrs)) =
-                            state.stack.pop()
-                        {
-                            let all_inline = nodes
-                                .iter()
-                                .all(|n| matches!(n, AdfNode::Text { .. } | AdfNode::HardBreak));
-                            if all_inline {
-                                if nodes.is_empty() {
-                                    return TokenSinkResult::Continue;
-                                }
-
-                                let paragraph = AdfNode::Paragraph {
-                                    content: Some(nodes),
-                                };
-
-                                let color = attrs
-                                    .get("style")
-                                    .and_then(|style| extract_style(style, "color"));
-                                let bg = attrs
-                                    .get("style")
-                                    .and_then(|style| extract_style(style, "background-color"));
-
-                                if color.is_some() || bg.is_some() {
-                                    let mut marks = vec![];
-                                    if let Some(color) = color {
-                                        marks.push(AdfMark::TextColor { color });
-                                    }
-                                    if let Some(bg) = bg {
-                                        marks.push(AdfMark::BackgroundColor { color: bg });
-                                    }
-                                    Self::push_block_to_parent(
-                                        &mut state,
-                                        AdfNode::Text {
-                                            text: Self::extract_text(&paragraph),
-                                            marks: Some(marks),
-                                        },
-                                    );
-                                } else {
-                                    // If no color or background, treat as a normal paragraph
-                                    Self::push_block_to_parent(&mut state, paragraph);
-                                }
-                            } else {
-                                if nodes.is_empty() {
-                                    return TokenSinkResult::Continue;
-                                }
-                                // treat as transparent container, discard style, forward content
-                                for node in nodes {
-                                    Self::push_block_to_parent(&mut state, node);
-                                }
-                            }
-                        } else {
-                            panic!("Mismatched div close tag");
-                        }
-                    }
-                    "span" => {
-                        Self::flush_text(&mut state);
-                        // Pop all marks that might have been added by style (need robust tracking, for now pop both if present)
-                        if let Some(last) = state.mark_stack.last() {
-                            match last {
-                                AdfMark::TextColor { .. } | AdfMark::BackgroundColor { .. } => {
-                                    state.mark_stack.pop();
-                                    // Attempt to pop again if both present on same tag
-                                    if let Some(second) = state.mark_stack.last() {
-                                        match second {
-                                            AdfMark::TextColor { .. }
-                                            | AdfMark::BackgroundColor { .. } => {
-                                                state.mark_stack.pop();
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
-                        } else {
-                            Self::flush_text(&mut state);
-                            Self::close_current_block(&mut state);
-                        }
-                    }
-                    "adf-status" => {
-                        if let Some(BlockContext::CustomBlock(CustomBlockType::Status, _, attrs)) =
-                            state.stack.pop()
-                        {
-                            let text = state.current_text.trim().to_string();
-                            state.current_text.clear();
-                            let color = attrs
-                                .get("style")
-                                .and_then(|style| extract_style(style, "background-color"));
-                            let local_id = attrs.get("aria-label").map(|id| id.to_string());
-                            Self::push_block_to_parent(
-                                &mut state,
-                                AdfNode::Status {
-                                    attrs: StatusAttrs {
-                                        color: color.unwrap_or_else(|| "neutral".to_string()),
-                                        local_id,
-                                        text,
-                                    },
-                                },
-                            );
-                        } else {
-                            panic!("Mismatched status close tag");
-                        }
-                    }
-                    "adf-emoji" => {
-                        if let Some(BlockContext::CustomBlock(CustomBlockType::Emoji, _, attrs)) =
-                            state.stack.pop()
-                        {
-                            let short_name = if let Some(value) = attrs.get("aria-alt") {
-                                value.clone()
-                            } else {
-                                ":smile:".to_string()
-                            };
-
-                            let text = state.current_text.trim().to_string();
-                            state.current_text.clear();
-                            Self::push_block_to_parent(
-                                &mut state,
-                                AdfNode::Emoji {
-                                    attrs: EmojiAttrs {
-                                        text: Some(text),
-                                        short_name,
-                                    },
-                                },
-                            );
-                        } else {
-                            panic!("Mismatched emoji close tag");
-                        }
-                    }
-                    _ => {}
                 }
             }
             Token::CharacterTokens(t) => {

@@ -1,6 +1,11 @@
+use std::collections::HashMap;
+
 use super::{ADFBuilderState, BlockContext, CustomBlockType, Element, MediaBlockType};
 use crate::{
-    adf::adf_types::{AdfNode, LinkMark, MediaAttrs, MediaMark, MediaNode, MediaSingleAttrs},
+    adf::adf_types::{
+        AdfNode, EmojiAttrs, LinkMark, LocalId, MediaAttrs, MediaMark, MediaNode, MediaSingleAttrs,
+        StatusAttrs,
+    },
     html::{ADFBuilder, HandlerFn, extract_style},
 };
 
@@ -444,25 +449,109 @@ pub(crate) fn mention_end_handler() -> HandlerFn {
     })
 }
 
-impl ADFBuilder {
-    pub fn close_current_decision_item(state: &mut ADFBuilderState) {
-        Self::flush_text(state);
-        let stack_item = state.stack.pop();
-        if let Some(BlockContext::DecisionItem(nodes, local_id)) = stack_item {
-            match state.stack.last_mut() {
-                Some(BlockContext::ListItem(_)) => {
-                    state.stack.pop(); // Replace the ListItem with the DecisionItem
-                    state
-                        .stack
-                        .push(BlockContext::DecisionItem(nodes, local_id));
-                }
-                _ => {
-                    // We are closing a decision item outside of a list item
-                    panic!("DecisionItem closed incorrectly; must use block-specific close method");
-                }
-            }
-        } else {
-            panic!("DecisionItem closed incorrectly; must use block-specific close method");
+pub(crate) fn local_data_start_handler() -> HandlerFn {
+    Box::new(|state: &mut ADFBuilderState, element: Element| {
+        let local_id = element
+            .attrs
+            .iter()
+            .find(|attr| attr.name.local.as_ref() == "id")
+            .map(|id| id.value.to_string());
+        state.custom_block_id = local_id.map(|id| LocalId { local_id: id });
+
+        let tag = element
+            .attrs
+            .iter()
+            .find(|attr| attr.name.local.as_ref() == "data-tag")
+            .map(|id| id.value.to_string());
+        state.custom_block_tag = tag.map(|tag| tag.to_string());
+        true
+    }) as HandlerFn
+}
+
+pub(crate) fn status_start_handler() -> HandlerFn {
+    Box::new(|state: &mut ADFBuilderState, element: Element| {
+        ADFBuilder::flush_text(state);
+
+        let mut node_attrs = HashMap::new();
+        for attr in element.attrs {
+            node_attrs.insert(attr.name.local.as_ref().to_string(), attr.value.to_string());
         }
-    }
+        state.current_text.clear();
+        let block = BlockContext::CustomBlock(CustomBlockType::Status, vec![], node_attrs);
+        state.stack.push(block);
+
+        true
+    }) as HandlerFn
+}
+
+pub(crate) fn status_end_handler() -> HandlerFn {
+    Box::new(|state: &mut ADFBuilderState, _element: Element| {
+        if let Some(BlockContext::CustomBlock(CustomBlockType::Status, _, attrs)) =
+            state.stack.pop()
+        {
+            let text = state.current_text.trim().to_string();
+            state.current_text.clear();
+            let color = attrs
+                .get("style")
+                .and_then(|style| extract_style(style, "background-color"));
+            let local_id = attrs.get("aria-label").map(|id| id.to_string());
+            ADFBuilder::push_block_to_parent(
+                state,
+                AdfNode::Status {
+                    attrs: StatusAttrs {
+                        color: color.unwrap_or_else(|| "neutral".to_string()),
+                        local_id,
+                        text,
+                    },
+                },
+            );
+        } else {
+            panic!("Mismatched status close tag");
+        }
+        true
+    }) as HandlerFn
+}
+
+pub(crate) fn emoji_start_handler() -> HandlerFn {
+    Box::new(|state: &mut ADFBuilderState, element: Element| {
+        ADFBuilder::flush_text(state);
+
+        let mut node_attrs = HashMap::new();
+        for attr in element.attrs {
+            node_attrs.insert(attr.name.local.as_ref().to_string(), attr.value.to_string());
+        }
+        state.current_text.clear();
+        let block = BlockContext::CustomBlock(CustomBlockType::Emoji, vec![], node_attrs);
+        state.stack.push(block);
+
+        true
+    }) as HandlerFn
+}
+
+pub(crate) fn emoji_end_handler() -> HandlerFn {
+    Box::new(|state: &mut ADFBuilderState, _element: Element| {
+        if let Some(BlockContext::CustomBlock(CustomBlockType::Emoji, _, attrs)) = state.stack.pop()
+        {
+            let short_name = if let Some(value) = attrs.get("aria-alt") {
+                value.clone()
+            } else {
+                ":smile:".to_string()
+            };
+
+            let text = state.current_text.trim().to_string();
+            state.current_text.clear();
+            ADFBuilder::push_block_to_parent(
+                state,
+                AdfNode::Emoji {
+                    attrs: EmojiAttrs {
+                        text: Some(text),
+                        short_name,
+                    },
+                },
+            );
+        } else {
+            panic!("Mismatched emoji close tag");
+        }
+        true
+    }) as HandlerFn
 }
