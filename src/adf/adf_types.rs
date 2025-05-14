@@ -27,9 +27,6 @@ pub enum AdfNode {
         #[serde(skip_serializing_if = "Option::is_none")]
         content: Option<Vec<AdfNode>>,
     },
-    InlineCard {
-        attrs: InlineCardAttrs,
-    },
     ListItem {
         content: Vec<AdfNode>,
     },
@@ -67,6 +64,9 @@ pub enum AdfNode {
     // Nodes which do not directly correspond to an HTML element
     Date {
         attrs: DateAttrs,
+    },
+    InlineCard {
+        attrs: InlineCardAttrs,
     },
     Emoji {
         attrs: EmojiAttrs,

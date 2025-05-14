@@ -7,9 +7,9 @@ use html5ever::tokenizer::{
 };
 
 use crate::adf::adf_types::{
-    AdfMark, AdfNode, EmojiAttrs, HeadingAttrs, LinkMark, LocalId, StatusAttrs, Subsup,
-    TaskItemAttrs, TaskItemState,
+    AdfMark, AdfNode, EmojiAttrs, LocalId, StatusAttrs, TaskItemAttrs, TaskItemState,
 };
+use crate::handlers::*;
 
 /// Cleans surrounding text by removing leading and trailing whitespace before and after newlines
 fn clean_surrounding_text(text: &str) -> &str {
@@ -43,57 +43,75 @@ fn clean_surrounding_text(text: &str) -> &str {
     if start > end { "" } else { &text[start..end] }
 }
 
+pub type HandlerFn = Box<dyn Fn(&mut ADFBuilderState, Element) -> bool>;
+
 pub struct ADFBuilder {
     state: RefCell<ADFBuilderState>,
-}
-
-struct ADFBuilderState {
-    stack: Vec<BlockContext>,
-    mark_stack: Vec<AdfMark>,
-    current_text: String,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-enum CustomBlockType {
-    Div,
-    Status,
-    Emoji,
-}
-
-#[derive(Debug)]
-enum BlockContext {
-    Document(Vec<AdfNode>),
-    Blockquote(Vec<AdfNode>),
-    CodeBlock(Vec<String>),
-    CustomBlock(CustomBlockType, Vec<AdfNode>, HashMap<String, String>),
-    Heading(u8, Vec<AdfNode>),
-    Paragraph(Vec<AdfNode>),
-    Table(Vec<AdfNode>),
-    TableCell(Vec<AdfNode>),
-    TableHeader(Vec<AdfNode>),
-    TableRow(Vec<AdfNode>),
-
-    PendingList {
-        nodes: Vec<AdfNode>,
-        ordered: bool,
-        local_id: Option<String>,
-    },
-    ListItem(Vec<AdfNode>),
-    TaskItem(Vec<AdfNode>, TaskItemState, String),
+    custom_start_handlers: HashMap<String, HandlerFn>,
+    start_handlers: HashMap<String, HandlerFn>,
+    custom_end_handlers: HashMap<String, HandlerFn>,
+    end_handlers: HashMap<String, HandlerFn>,
 }
 
 impl ADFBuilder {
     pub fn new() -> Self {
-        Self {
+        let mut this = Self {
             state: RefCell::new(ADFBuilderState {
                 stack: vec![BlockContext::Document(vec![])],
                 mark_stack: vec![],
                 current_text: String::new(),
+                custom_block_id: None,
+                custom_block_tag: None,
             }),
-        }
+            start_handlers: base_start_handlers(),
+            custom_start_handlers: HashMap::new(),
+            end_handlers: base_end_handlers(),
+            custom_end_handlers: HashMap::new(),
+        };
+
+        this.add_start_handler("adf-media-single", media_single_start_handler());
+        this.add_end_handler("adf-media-single", media_single_end_handler());
+
+        this.add_start_handler("adf-media-group", media_group_start_handler());
+        this.add_end_handler("adf-media-group", media_group_end_handler());
+
+        this.add_start_handler("a", media_start_handler());
+        this.add_start_handler("img", media_start_handler());
+
+        this.add_start_handler("time", date_start_handler());
+        this.add_end_handler("time", date_end_handler());
+
+        this.add_start_handler("detail", details_start_handler());
+        this.add_end_handler("detail", details_end_handler());
+
+        this.add_start_handler("figure", figure_start_handler());
+        this.add_end_handler("figure", figure_end_handler());
+
+        this.add_start_handler("adf-mention", mention_start_handler());
+        this.add_end_handler("adf-mention", mention_end_handler());
+
+        this
     }
 
-    fn flush_text(state: &mut ADFBuilderState) {
+    pub fn add_start_handler(
+        &mut self,
+        tag: &str,
+        handler: impl Fn(&mut ADFBuilderState, Element) -> bool + 'static,
+    ) {
+        self.custom_start_handlers
+            .insert(tag.to_string(), Box::new(handler));
+    }
+
+    pub fn add_end_handler(
+        &mut self,
+        tag: &str,
+        handler: impl Fn(&mut ADFBuilderState, Element) -> bool + 'static,
+    ) {
+        self.custom_end_handlers
+            .insert(tag.to_string(), Box::new(handler));
+    }
+
+    pub fn flush_text(state: &mut ADFBuilderState) {
         if !state.current_text.is_empty() {
             let mut text = std::mem::take(&mut state.current_text);
 
@@ -159,7 +177,7 @@ impl ADFBuilder {
         }
     }
 
-    fn close_current_block(state: &mut ADFBuilderState) {
+    pub fn close_current_block(state: &mut ADFBuilderState) {
         let frame = state.stack.pop().expect("Expected a block context");
         let parent = state
             .stack
@@ -175,6 +193,10 @@ impl ADFBuilder {
                 }),
                 BlockContext::CustomBlock(block_ty, parent_nodes, _) => {
                     if *block_ty == CustomBlockType::Div {
+                        parent_nodes.push(AdfNode::Paragraph {
+                            content: Some(nodes),
+                        });
+                    } else if *block_ty == CustomBlockType::Panel {
                         parent_nodes.push(AdfNode::Paragraph {
                             content: Some(nodes),
                         });
@@ -213,6 +235,7 @@ impl ADFBuilder {
                 nodes,
                 ordered,
                 local_id,
+                local_tag,
             } => match parent {
                 BlockContext::Document(parent_nodes)
                 | BlockContext::CustomBlock(CustomBlockType::Div, parent_nodes, _)
@@ -220,9 +243,16 @@ impl ADFBuilder {
                 | BlockContext::TableCell(parent_nodes)
                 | BlockContext::TableHeader(parent_nodes)
                 | BlockContext::ListItem(parent_nodes) => {
-                    let is_task_list = nodes.iter().any(|node| node.is_task_item());
+                    let is_task_list = local_tag
+                        .as_ref()
+                        .map(|tag| tag == "task-list")
+                        .unwrap_or(false);
+                    let is_decision_list = local_tag
+                        .as_ref()
+                        .map(|tag| tag == "decision-list")
+                        .unwrap_or(false);
                     eprintln!(
-                        "PendingList closed with {nodes:?} (ordered: {ordered:?}) {local_id:?} (is_task_list: {is_task_list:?})"
+                        "PendingList closed with {nodes:?} (ordered: {ordered:?}) {local_id:?} {local_tag:?}"
                     );
                     if is_task_list {
                         parent_nodes.push(AdfNode::TaskList {
@@ -230,6 +260,13 @@ impl ADFBuilder {
                                 local_id: local_id.unwrap_or_default(),
                             },
                             content: nodes,
+                        });
+                    } else if is_decision_list {
+                        parent_nodes.push(AdfNode::DecisionList {
+                            content: nodes,
+                            attrs: LocalId {
+                                local_id: local_id.unwrap_or_default(),
+                            },
                         });
                     } else if ordered {
                         parent_nodes.push(AdfNode::OrderedList {
@@ -248,7 +285,7 @@ impl ADFBuilder {
         }
     }
 
-    fn close_current_list_item(state: &mut ADFBuilderState) {
+    pub fn close_current_list_item(state: &mut ADFBuilderState) {
         let stack_item = state.stack.pop();
         if let Some(BlockContext::ListItem(nodes)) = stack_item {
             match state.stack.last_mut() {
@@ -311,7 +348,7 @@ impl ADFBuilder {
         Self::push_inline(state, node);
     }
 
-    fn push_block_to_parent(state: &mut ADFBuilderState, node: AdfNode) {
+    pub fn push_block_to_parent(state: &mut ADFBuilderState, node: AdfNode) {
         let frame = state
             .stack
             .last_mut()
@@ -382,7 +419,7 @@ impl ADFBuilder {
     }
 }
 
-fn extract_css_color(style: &str, property: &str) -> Option<String> {
+pub fn extract_style(style: &str, property: &str) -> Option<String> {
     style
         .split(';')
         .filter_map(|rule| {
@@ -409,426 +446,388 @@ impl TokenSink for ADFBuilder {
                 name,
                 attrs,
                 self_closing,
-            }) => match (name.as_ref(), self_closing) {
-                ("p", false) => {
-                    Self::flush_text(&mut state);
-                    state.stack.push(BlockContext::Paragraph(vec![]));
+            }) => {
+                if let Some(handler) = self.custom_start_handlers.get(name.as_ref()) {
+                    let element = Element {
+                        tag: name.to_string(),
+                        attrs: attrs.clone(),
+                        self_closing,
+                    };
+                    if handler(&mut state, element) {
+                        return TokenSinkResult::Continue;
+                    }
                 }
-                ("pre", false) => {
-                    Self::flush_text(&mut state);
-                    state.stack.push(BlockContext::CodeBlock(vec![]));
+
+                if let Some(handler) = self.start_handlers.get(name.as_ref()) {
+                    let element = Element {
+                        tag: name.to_string(),
+                        attrs: attrs.clone(),
+                        self_closing,
+                    };
+                    handler(&mut state, element);
+                    return TokenSinkResult::Continue;
                 }
-                ("h1", false)
-                | ("h2", false)
-                | ("h3", false)
-                | ("h4", false)
-                | ("h5", false)
-                | ("h6", false) => {
-                    Self::flush_text(&mut state);
-                    let level = name
-                        .as_ref()
-                        .strip_prefix('h')
-                        .unwrap()
-                        .parse::<u8>()
-                        .unwrap();
-                    state.stack.push(BlockContext::Heading(level, vec![]));
-                }
-                ("blockquote", false) => {
-                    Self::flush_text(&mut state);
-                    state.stack.push(BlockContext::Blockquote(vec![]));
-                }
-                ("ul", false) => {
-                    Self::flush_text(&mut state);
-                    state.stack.push(BlockContext::PendingList {
-                        nodes: vec![],
-                        ordered: false,
-                        local_id: attrs
+
+                match (name.as_ref(), self_closing) {
+                    ("adf-decision-item", _) => {
+                        let local_id = attrs
                             .iter()
                             .find(|attr| attr.name.local.as_ref() == "id")
-                            .map(|id| id.value.to_string()),
-                    });
-                }
-                ("ol", false) => {
-                    Self::flush_text(&mut state);
-                    state.stack.push(BlockContext::PendingList {
-                        nodes: vec![],
-                        ordered: true,
-                        local_id: None,
-                    });
-                }
-                ("li", false) => {
-                    Self::flush_text(&mut state);
-                    state.stack.push(BlockContext::ListItem(vec![]));
-                }
-                ("input", _) => {
-                    // Check if inside TaskItem, and if input type is checkbox
-                    let stack_back = state.stack.pop();
-                    match stack_back {
-                        Some(BlockContext::ListItem(inner)) => {
-                            if let Some(input_type) =
-                                attrs.iter().find(|attr| attr.name.local.as_ref() == "type")
-                            {
-                                if input_type.value.eq_ignore_ascii_case("checkbox") {
-                                    let checked = attrs
-                                        .iter()
-                                        .any(|attr| attr.name.local.as_ref() == "checked");
-                                    let item_state = if checked {
-                                        TaskItemState::Done
-                                    } else {
-                                        TaskItemState::Todo
-                                    };
-
-                                    let task_item = BlockContext::TaskItem(
-                                        inner,
-                                        item_state,
-                                        attrs
+                            .map(|id| id.value.to_string())
+                            .unwrap_or_default();
+                        let decision_item = BlockContext::DecisionItem(vec![], local_id);
+                        state.stack.push(decision_item);
+                    }
+                    ("input", _) => {
+                        // Check if inside TaskItem, and if input type is checkbox
+                        let stack_back = state.stack.pop();
+                        match stack_back {
+                            Some(BlockContext::ListItem(inner)) => {
+                                if let Some(input_type) =
+                                    attrs.iter().find(|attr| attr.name.local.as_ref() == "type")
+                                {
+                                    if input_type.value.eq_ignore_ascii_case("checkbox") {
+                                        let checked = attrs
                                             .iter()
-                                            .find(|attr| attr.name.local.as_ref() == "id")
-                                            .map(|id| id.value.to_string())
-                                            .unwrap_or_default(),
-                                    );
-                                    state.stack.push(task_item);
-                                } else {
-                                    state.stack.push(BlockContext::ListItem(inner));
-                                }
-                            }
-                        }
-                        Some(item) => {
-                            state.stack.push(item);
-                        }
-                        None => {}
-                    }
-                }
-                ("br", true) => {
-                    Self::flush_text_and_push_inline(&mut state, AdfNode::HardBreak);
-                }
-                ("hr", true) => {
-                    Self::flush_text(&mut state);
-                    // Close any open block contexts that cannot contain Rule
-                    while matches!(
-                        state.stack.last(),
-                        Some(
-                            BlockContext::Paragraph(_)
-                                | BlockContext::ListItem(_)
-                                | BlockContext::Blockquote(_)
-                                | BlockContext::TableCell(_)
-                                | BlockContext::TableHeader(_)
-                        )
-                    ) {
-                        Self::close_current_block(&mut state);
-                    }
-                    Self::push_block_to_parent(&mut state, AdfNode::Rule);
-                }
-                ("em", false) => {
-                    Self::flush_text(&mut state);
-                    state.mark_stack.push(AdfMark::Em);
-                }
-                ("strong", false) => {
-                    Self::flush_text(&mut state);
-                    state.mark_stack.push(AdfMark::Strong);
-                }
-                ("code", false) => {
-                    Self::flush_text(&mut state);
-                    let in_pre = state
-                        .stack
-                        .iter()
-                        .any(|ctx| matches!(ctx, BlockContext::CodeBlock(_)));
-                    if !in_pre {
-                        state.mark_stack.push(AdfMark::Code);
-                    }
-                    // If inside <pre>, do nothing (handled purely as block)
-                }
-                ("del", false) => {
-                    Self::flush_text(&mut state);
-                    state.mark_stack.push(AdfMark::Strike);
-                }
-                ("a", false) => {
-                    Self::flush_text(&mut state);
-                    if let Some(href) = attrs.iter().find(|attr| attr.name.local.as_ref() == "href")
-                    {
-                        let mark = AdfMark::Link(LinkMark {
-                            href: href.value.to_string(),
-                            ..Default::default()
-                        });
-                        state.mark_stack.push(mark);
-                    }
-                }
-                ("sub", false) => {
-                    Self::flush_text(&mut state);
-                    state
-                        .mark_stack
-                        .push(AdfMark::Subsup { type_: Subsup::Sub });
-                }
-                ("sup", false) => {
-                    Self::flush_text(&mut state);
-                    state
-                        .mark_stack
-                        .push(AdfMark::Subsup { type_: Subsup::Sup });
-                }
-                ("u", false) => {
-                    Self::flush_text(&mut state);
-                    state.mark_stack.push(AdfMark::Underline);
-                }
-                ("span", false) => {
-                    // Check style for color or background-color
-                    Self::flush_text(&mut state);
-                    if let Some(style_attr) = attrs
-                        .iter()
-                        .find(|attr| attr.name.local.as_ref() == "style")
-                    {
-                        let style = style_attr.value.to_ascii_lowercase();
-                        if let Some(color) = extract_css_color(&style, "color") {
-                            state.mark_stack.push(AdfMark::TextColor { color });
-                        }
-                        if let Some(bg) = extract_css_color(&style, "background-color") {
-                            state
-                                .mark_stack
-                                .push(AdfMark::BackgroundColor { color: bg });
-                        }
-                    } else {
-                        Self::flush_text(&mut state);
-                        state.stack.push(BlockContext::Paragraph(vec![]));
-                    }
-                }
-                ("table", false) => {
-                    Self::flush_text(&mut state);
-                    state.stack.push(BlockContext::Table(vec![]));
-                }
-                ("tr", false) => {
-                    Self::flush_text(&mut state);
-                    state.stack.push(BlockContext::TableRow(vec![]));
-                }
-                ("td", false) => {
-                    Self::flush_text(&mut state);
-                    state.stack.push(BlockContext::TableCell(vec![]));
-                }
-                ("th", false) => {
-                    Self::flush_text(&mut state);
-                    state.stack.push(BlockContext::TableHeader(vec![]));
-                }
-                ("adf-status", false) | ("adf-emoji", false) | ("div", false) => {
-                    Self::flush_text(&mut state);
+                                            .any(|attr| attr.name.local.as_ref() == "checked");
+                                        let item_state = if checked {
+                                            TaskItemState::Done
+                                        } else {
+                                            TaskItemState::Todo
+                                        };
 
-                    let mut node_attrs = HashMap::new();
-                    for attr in attrs {
-                        node_attrs
-                            .insert(attr.name.local.as_ref().to_string(), attr.value.to_string());
-                    }
-                    let block = BlockContext::CustomBlock(
-                        match name.as_ref() {
-                            "adf-status" => {
-                                state.current_text.clear();
-                                CustomBlockType::Status
-                            }
-                            "adf-emoji" => {
-                                state.current_text.clear();
-                                CustomBlockType::Emoji
-                            }
-                            "div" => CustomBlockType::Div,
-                            _ => unreachable!(),
-                        },
-                        vec![],
-                        node_attrs,
-                    );
-                    state.stack.push(block);
-                }
-                _ => {}
-            },
-            Token::TagToken(Tag {
-                kind: TagKind::EndTag,
-                name,
-                ..
-            }) => match name.as_ref() {
-                "p" | "pre" | "blockquote" => {
-                    Self::flush_text(&mut state);
-                    Self::close_current_block(&mut state);
-                }
-                "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
-                    Self::flush_text(&mut state);
-                    if let Some(BlockContext::Heading(level, nodes)) = state.stack.pop() {
-                        Self::push_block_to_parent(
-                            &mut state,
-                            AdfNode::Heading {
-                                attrs: HeadingAttrs { level },
-                                content: Some(nodes),
-                            },
-                        );
-                    } else {
-                        panic!("Mismatched heading close tag");
-                    }
-                }
-                "ul" | "ol" => {
-                    Self::flush_text(&mut state);
-                    Self::close_current_block(&mut state);
-                }
-                "li" => {
-                    Self::flush_text(&mut state);
-                    Self::close_current_list_item(&mut state);
-                }
-                "tr" => {
-                    Self::flush_text(&mut state);
-                    Self::close_current_table_row(&mut state);
-                }
-                "td" => {
-                    Self::flush_text(&mut state);
-                    Self::close_current_table_cell(&mut state);
-                }
-                "th" => {
-                    Self::flush_text(&mut state);
-                    Self::close_current_table_header(&mut state);
-                }
-                "table" => {
-                    Self::flush_text(&mut state);
-                    if let Some(BlockContext::Table(rows)) = state.stack.pop() {
-                        Self::push_block_to_parent(
-                            &mut state,
-                            AdfNode::Table {
-                                attrs: None,
-                                content: rows,
-                            },
-                        );
-                    }
-                }
-                "code" => {
-                    Self::flush_text(&mut state);
-                    let in_pre = state
-                        .stack
-                        .iter()
-                        .any(|ctx| matches!(ctx, BlockContext::CodeBlock(_)));
-                    if !in_pre {
-                        Self::pop_mark(&mut state, |m| matches!(m, AdfMark::Code));
-                    }
-                    // Inside <pre>, no mark to pop
-                }
-                "div" => {
-                    Self::flush_text(&mut state);
-                    if let Some(BlockContext::CustomBlock(CustomBlockType::Div, nodes, attrs)) =
-                        state.stack.pop()
-                    {
-                        let all_inline = nodes
-                            .iter()
-                            .all(|n| matches!(n, AdfNode::Text { .. } | AdfNode::HardBreak));
-                        if all_inline {
-                            let paragraph = AdfNode::Paragraph {
-                                content: Some(nodes),
-                            };
-
-                            let color = attrs
-                                .get("style")
-                                .and_then(|style| extract_css_color(style, "color"));
-                            let bg = attrs
-                                .get("style")
-                                .and_then(|style| extract_css_color(style, "background-color"));
-
-                            if color.is_some() || bg.is_some() {
-                                let mut marks = vec![];
-                                if let Some(color) = color {
-                                    marks.push(AdfMark::TextColor { color });
-                                }
-                                if let Some(bg) = bg {
-                                    marks.push(AdfMark::BackgroundColor { color: bg });
-                                }
-                                Self::push_block_to_parent(
-                                    &mut state,
-                                    AdfNode::Text {
-                                        text: Self::extract_text(&paragraph),
-                                        marks: Some(marks),
-                                    },
-                                );
-                            } else {
-                                // If no color or background, treat as a normal paragraph
-                                Self::push_block_to_parent(&mut state, paragraph);
-                            }
-                        } else {
-                            // treat as transparent container, discard style, forward content
-                            for node in nodes {
-                                Self::push_block_to_parent(&mut state, node);
-                            }
-                        }
-                    } else {
-                        panic!("Mismatched div close tag");
-                    }
-                }
-                "span" => {
-                    Self::flush_text(&mut state);
-                    // Pop all marks that might have been added by style (need robust tracking, for now pop both if present)
-                    if let Some(last) = state.mark_stack.last() {
-                        match last {
-                            AdfMark::TextColor { .. } | AdfMark::BackgroundColor { .. } => {
-                                state.mark_stack.pop();
-                                // Attempt to pop again if both present on same tag
-                                if let Some(second) = state.mark_stack.last() {
-                                    match second {
-                                        AdfMark::TextColor { .. }
-                                        | AdfMark::BackgroundColor { .. } => {
-                                            state.mark_stack.pop();
-                                        }
-                                        _ => {}
+                                        let task_item = BlockContext::TaskItem(
+                                            inner,
+                                            item_state,
+                                            attrs
+                                                .iter()
+                                                .find(|attr| attr.name.local.as_ref() == "id")
+                                                .map(|id| id.value.to_string())
+                                                .unwrap_or_default(),
+                                        );
+                                        state.stack.push(task_item);
+                                    } else {
+                                        state.stack.push(BlockContext::ListItem(inner));
                                     }
                                 }
                             }
-                            _ => {}
+                            Some(item) => {
+                                state.stack.push(item);
+                            }
+                            None => {}
                         }
-                    } else {
+                    }
+                    ("br", true) => {
+                        Self::flush_text_and_push_inline(&mut state, AdfNode::HardBreak);
+                    }
+                    ("hr", true) => {
                         Self::flush_text(&mut state);
-                        Self::close_current_block(&mut state);
+                        // Close any open block contexts that cannot contain Rule
+                        while matches!(
+                            state.stack.last(),
+                            Some(
+                                BlockContext::Paragraph(_)
+                                    | BlockContext::ListItem(_)
+                                    | BlockContext::Blockquote(_)
+                                    | BlockContext::TableCell(_)
+                                    | BlockContext::TableHeader(_)
+                            )
+                        ) {
+                            Self::close_current_block(&mut state);
+                        }
+                        Self::push_block_to_parent(&mut state, AdfNode::Rule);
                     }
-                }
-                "em" | "strong" | "del" | "a" | "u" | "sub" | "sup" => {
-                    Self::flush_text(&mut state);
-                    state.mark_stack.pop();
-                }
-                "adf-status" => {
-                    if let Some(BlockContext::CustomBlock(CustomBlockType::Status, _, attrs)) =
-                        state.stack.pop()
-                    {
-                        let text = state.current_text.trim().to_string();
-                        state.current_text.clear();
-                        let color = attrs
-                            .get("style")
-                            .and_then(|style| extract_css_color(style, "background-color"));
-                        let local_id = attrs.get("aria-label").map(|id| id.to_string());
-                        Self::push_block_to_parent(
-                            &mut state,
-                            AdfNode::Status {
-                                attrs: StatusAttrs {
-                                    color: color.unwrap_or_else(|| "neutral".to_string()),
-                                    local_id,
-                                    text,
-                                },
-                            },
-                        );
-                    } else {
-                        panic!("Mismatched status close tag");
+                    ("code", false) => {
+                        Self::flush_text(&mut state);
+                        let in_pre = state
+                            .stack
+                            .iter()
+                            .any(|ctx| matches!(ctx, BlockContext::CodeBlock(_)));
+                        if !in_pre {
+                            state.mark_stack.push(AdfMark::Code);
+                        }
+                        // If inside <pre>, do nothing (handled purely as block)
                     }
-                }
-                "adf-emoji" => {
-                    if let Some(BlockContext::CustomBlock(CustomBlockType::Emoji, _, attrs)) =
-                        state.stack.pop()
-                    {
-                        let short_name = if let Some(value) = attrs.get("aria-alt") {
-                            value.clone()
+                    ("span", false) => {
+                        // Check style for color or background-color
+                        Self::flush_text(&mut state);
+                        if let Some(style_attr) = attrs
+                            .iter()
+                            .find(|attr| attr.name.local.as_ref() == "style")
+                        {
+                            let style = style_attr.value.to_ascii_lowercase();
+                            if let Some(color) = extract_style(&style, "color") {
+                                state.mark_stack.push(AdfMark::TextColor { color });
+                            }
+                            if let Some(bg) = extract_style(&style, "background-color") {
+                                state
+                                    .mark_stack
+                                    .push(AdfMark::BackgroundColor { color: bg });
+                            }
                         } else {
-                            ":smile:".to_string()
-                        };
-
-                        let text = state.current_text.trim().to_string();
-                        state.current_text.clear();
-                        Self::push_block_to_parent(
-                            &mut state,
-                            AdfNode::Emoji {
-                                attrs: EmojiAttrs {
-                                    text: Some(text),
-                                    short_name,
-                                },
-                            },
+                            Self::flush_text(&mut state);
+                            state.stack.push(BlockContext::Paragraph(vec![]));
+                        }
+                    }
+                    ("table", false) => {
+                        Self::flush_text(&mut state);
+                        state.stack.push(BlockContext::Table(vec![]));
+                    }
+                    ("tr", false) => {
+                        Self::flush_text(&mut state);
+                        state.stack.push(BlockContext::TableRow(vec![]));
+                    }
+                    ("td", false) => {
+                        Self::flush_text(&mut state);
+                        state.stack.push(BlockContext::TableCell(vec![]));
+                    }
+                    ("th", false) => {
+                        Self::flush_text(&mut state);
+                        state.stack.push(BlockContext::TableHeader(vec![]));
+                    }
+                    ("adf-local-data", _) => {
+                        let local_id = attrs
+                            .iter()
+                            .find(|attr| attr.name.local.as_ref() == "id")
+                            .map(|id| id.value.to_string());
+                        state.custom_block_id = local_id.map(|id| LocalId { local_id: id });
+                        eprintln!(
+                            "adf-local-data custom block id: {:?}",
+                            state.custom_block_id
                         );
-                    } else {
-                        panic!("Mismatched emoji close tag");
+
+                        let tag = attrs
+                            .iter()
+                            .find(|attr| attr.name.local.as_ref() == "data-tag")
+                            .map(|id| id.value.to_string());
+                        state.custom_block_tag = tag.map(|tag| tag.to_string());
+                        eprintln!(
+                            "adf-local-data custom block tag: {:?}",
+                            state.custom_block_tag
+                        );
+                    }
+                    ("adf-status", false) | ("adf-emoji", false) | ("div", false) => {
+                        Self::flush_text(&mut state);
+
+                        let mut node_attrs = HashMap::new();
+                        for attr in attrs {
+                            node_attrs.insert(
+                                attr.name.local.as_ref().to_string(),
+                                attr.value.to_string(),
+                            );
+                        }
+                        let block = BlockContext::CustomBlock(
+                            match name.as_ref() {
+                                "adf-status" => {
+                                    state.current_text.clear();
+                                    CustomBlockType::Status
+                                }
+                                "adf-emoji" => {
+                                    state.current_text.clear();
+                                    CustomBlockType::Emoji
+                                }
+                                "div" => CustomBlockType::Div,
+                                _ => unreachable!(),
+                            },
+                            vec![],
+                            node_attrs,
+                        );
+                        state.stack.push(block);
+                    }
+                    _ => {}
+                }
+            }
+            Token::TagToken(Tag {
+                kind: TagKind::EndTag,
+                name,
+                attrs,
+                self_closing,
+            }) => {
+                if let Some(handler) = self.custom_end_handlers.get(name.as_ref()) {
+                    let element = Element {
+                        tag: name.to_string(),
+                        attrs: attrs.clone(),
+                        self_closing,
+                    };
+                    if handler(&mut state, element) {
+                        return TokenSinkResult::Continue;
                     }
                 }
-                _ => {}
-            },
+
+                if let Some(handler) = self.end_handlers.get(name.as_ref()) {
+                    handler(
+                        &mut state,
+                        Element {
+                            tag: name.to_string(),
+                            attrs,
+                            self_closing,
+                        },
+                    );
+                    return TokenSinkResult::Continue;
+                }
+
+                match name.as_ref() {
+                    "tr" => {
+                        Self::flush_text(&mut state);
+                        Self::close_current_table_row(&mut state);
+                    }
+                    "td" => {
+                        Self::flush_text(&mut state);
+                        Self::close_current_table_cell(&mut state);
+                    }
+                    "th" => {
+                        Self::flush_text(&mut state);
+                        Self::close_current_table_header(&mut state);
+                    }
+                    "table" => {
+                        Self::flush_text(&mut state);
+                        if let Some(BlockContext::Table(rows)) = state.stack.pop() {
+                            Self::push_block_to_parent(
+                                &mut state,
+                                AdfNode::Table {
+                                    attrs: None,
+                                    content: rows,
+                                },
+                            );
+                        }
+                    }
+                    "code" => {
+                        Self::flush_text(&mut state);
+                        let in_pre = state
+                            .stack
+                            .iter()
+                            .any(|ctx| matches!(ctx, BlockContext::CodeBlock(_)));
+                        if !in_pre {
+                            Self::pop_mark(&mut state, |m| matches!(m, AdfMark::Code));
+                        }
+                        // Inside <pre>, no mark to pop
+                    }
+                    "div" => {
+                        Self::flush_text(&mut state);
+                        if let Some(BlockContext::CustomBlock(CustomBlockType::Div, nodes, attrs)) =
+                            state.stack.pop()
+                        {
+                            let all_inline = nodes
+                                .iter()
+                                .all(|n| matches!(n, AdfNode::Text { .. } | AdfNode::HardBreak));
+                            if all_inline {
+                                let paragraph = AdfNode::Paragraph {
+                                    content: Some(nodes),
+                                };
+
+                                let color = attrs
+                                    .get("style")
+                                    .and_then(|style| extract_style(style, "color"));
+                                let bg = attrs
+                                    .get("style")
+                                    .and_then(|style| extract_style(style, "background-color"));
+
+                                if color.is_some() || bg.is_some() {
+                                    let mut marks = vec![];
+                                    if let Some(color) = color {
+                                        marks.push(AdfMark::TextColor { color });
+                                    }
+                                    if let Some(bg) = bg {
+                                        marks.push(AdfMark::BackgroundColor { color: bg });
+                                    }
+                                    Self::push_block_to_parent(
+                                        &mut state,
+                                        AdfNode::Text {
+                                            text: Self::extract_text(&paragraph),
+                                            marks: Some(marks),
+                                        },
+                                    );
+                                } else {
+                                    // If no color or background, treat as a normal paragraph
+                                    Self::push_block_to_parent(&mut state, paragraph);
+                                }
+                            } else {
+                                // treat as transparent container, discard style, forward content
+                                for node in nodes {
+                                    Self::push_block_to_parent(&mut state, node);
+                                }
+                            }
+                        } else {
+                            panic!("Mismatched div close tag");
+                        }
+                    }
+                    "span" => {
+                        Self::flush_text(&mut state);
+                        // Pop all marks that might have been added by style (need robust tracking, for now pop both if present)
+                        if let Some(last) = state.mark_stack.last() {
+                            match last {
+                                AdfMark::TextColor { .. } | AdfMark::BackgroundColor { .. } => {
+                                    state.mark_stack.pop();
+                                    // Attempt to pop again if both present on same tag
+                                    if let Some(second) = state.mark_stack.last() {
+                                        match second {
+                                            AdfMark::TextColor { .. }
+                                            | AdfMark::BackgroundColor { .. } => {
+                                                state.mark_stack.pop();
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        } else {
+                            Self::flush_text(&mut state);
+                            Self::close_current_block(&mut state);
+                        }
+                    }
+                    "adf-status" => {
+                        if let Some(BlockContext::CustomBlock(CustomBlockType::Status, _, attrs)) =
+                            state.stack.pop()
+                        {
+                            let text = state.current_text.trim().to_string();
+                            state.current_text.clear();
+                            let color = attrs
+                                .get("style")
+                                .and_then(|style| extract_style(style, "background-color"));
+                            let local_id = attrs.get("aria-label").map(|id| id.to_string());
+                            Self::push_block_to_parent(
+                                &mut state,
+                                AdfNode::Status {
+                                    attrs: StatusAttrs {
+                                        color: color.unwrap_or_else(|| "neutral".to_string()),
+                                        local_id,
+                                        text,
+                                    },
+                                },
+                            );
+                        } else {
+                            panic!("Mismatched status close tag");
+                        }
+                    }
+                    "adf-emoji" => {
+                        if let Some(BlockContext::CustomBlock(CustomBlockType::Emoji, _, attrs)) =
+                            state.stack.pop()
+                        {
+                            let short_name = if let Some(value) = attrs.get("aria-alt") {
+                                value.clone()
+                            } else {
+                                ":smile:".to_string()
+                            };
+
+                            let text = state.current_text.trim().to_string();
+                            state.current_text.clear();
+                            Self::push_block_to_parent(
+                                &mut state,
+                                AdfNode::Emoji {
+                                    attrs: EmojiAttrs {
+                                        text: Some(text),
+                                        short_name,
+                                    },
+                                },
+                            );
+                        } else {
+                            panic!("Mismatched emoji close tag");
+                        }
+                    }
+                    _ => {}
+                }
+            }
             Token::CharacterTokens(t) => {
                 state.current_text.push_str(&t);
             }
@@ -856,7 +855,7 @@ pub fn parse_html(input: &str) -> AdfNode {
 mod tests {
     use super::*;
 
-    use crate::adf::adf_types::AdfNode;
+    use crate::adf::adf_types::{AdfNode, HeadingAttrs, LinkMark, Subsup};
 
     fn assert_content_eq(adf: AdfNode, expected: Vec<AdfNode>) {
         assert_eq!(

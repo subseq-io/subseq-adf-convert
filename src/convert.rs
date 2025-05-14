@@ -58,6 +58,11 @@ fn media_adf_to_html(mut node: Node, media: Vec<MediaNode>) {
                     let mut attrs = vec![];
                     attrs.push(format!("src=\"{}\"", link.href));
 
+                    attrs.push(format!(
+                        "data-collection=\"{}\"",
+                        media_node.attrs.collection
+                    ));
+                    attrs.push(format!("data-media-id=\"{}\"", media_node.attrs.id));
                     if let Some(alt) = &media_node.attrs.alt {
                         attrs.push(format!("alt=\"{}\"", alt));
                     }
@@ -124,11 +129,11 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 }
             }
             AdfNode::Date { attrs } => {
-                let mut date = node.child(Cow::Borrowed("adf-date"));
                 let ts = attrs.timestamp.parse::<i64>().unwrap_or_default();
                 let date_str = chrono::DateTime::from_timestamp(ts, 0)
                     .unwrap_or_default()
                     .to_rfc3339();
+                let mut date = node.time().attr(&format!("datetime=\"{}\"", date_str));
                 writeln!(date, "{}", date_str).ok();
             }
             AdfNode::Doc { content, .. } => {
@@ -145,8 +150,11 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     writeln!(emoji, "{}", attrs.short_name).ok();
                 }
             }
-            AdfNode::Expand { content, .. } => {
-                let expand = node.details();
+            AdfNode::Expand { content, attrs } => {
+                let mut expand = node.details();
+                if let Some(title) = attrs.title.as_ref() {
+                    writeln!(expand.summary(), "{}", title).ok();
+                }
                 inner_adf_to_html(expand, content);
             }
             AdfNode::HardBreak => close(node.br()),
@@ -166,7 +174,12 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
             }
             AdfNode::InlineCard { attrs } => {
                 if let Some(url) = &attrs.url {
-                    let mut a_tag = node.a().attr(&format!("href={}", url));
+                    let mut a_tag = node
+                        .a()
+                        .attr(&format!("href={}", url))
+                        .attr("data-inline-card=\"true\"")
+                        .attr("target=\"_blank\"")
+                        .attr("rel=\"noopener noreferrer\"");
                     writeln!(a_tag, "{}", url).ok();
                 }
             }
@@ -186,15 +199,22 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 media_adf_to_html(media_single, content);
             }
             AdfNode::Mention { attrs } => {
-                let mut mention = node.span();
+                let mut mention = node
+                    .child(Cow::Borrowed("adf-mention"))
+                    .attr(&format!("data-mention-id=\"{}\"", attrs.id));
+                if let Some(user_type) = &attrs.user_type {
+                    mention = mention.attr(&format!("data-user-type=\"{}\"", user_type));
+                }
+                if let Some(access_level) = &attrs.access_level {
+                    mention = mention.attr(&format!("data-access-level=\"{}\"", access_level));
+                }
                 if let Some(text) = &attrs.text {
                     writeln!(mention, "@{}", text).ok();
-                } else {
-                    writeln!(mention, "@{}", attrs.id).ok();
                 }
             }
-            AdfNode::NestedExpand { content, .. } => {
-                let expand = node.details();
+            AdfNode::NestedExpand { content, attrs } => {
+                let mut expand = node.details().attr("data-nested=\"true\"");
+                writeln!(expand.summary(), "{}", attrs.title).ok();
                 inner_adf_to_html(expand, content);
             }
             AdfNode::OrderedList { content, .. } => {
@@ -202,7 +222,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 inner_adf_to_html(list, content);
             }
             AdfNode::Panel { content, .. } => {
-                let panel = node.div();
+                let panel = node.figure().attr("data-panel-type=\"info\"");
                 inner_adf_to_html(panel, content);
             }
             AdfNode::Paragraph { content } => {
@@ -265,7 +285,12 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 apply_marks(&mut node, &marks.unwrap_or_default(), &text).ok();
             }
             AdfNode::TaskList { content, attrs } => {
-                let task_list = node.ul().attr(&format!("id=\"{}\"", attrs.local_id));
+                close(
+                    node.void_child(Cow::Borrowed("adf-local-data"))
+                        .attr(&format!("data-tag=\"task-list\""))
+                        .attr(&format!("id=\"{}\"", attrs.local_id)),
+                );
+                let task_list = node.ul();
                 inner_adf_to_html(task_list, content);
             }
             AdfNode::TaskItem { attrs, content } => {
@@ -284,20 +309,18 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 inner_adf_to_html(task_item, content);
             }
             AdfNode::DecisionList { content, attrs } => {
-                let decision = node
-                    .child(Cow::Borrowed("adf-decision-list"))
-                    .attr(&format!("id=\"{}\"", attrs.local_id));
-                inner_adf_to_html(decision, content);
+                close(
+                    node.void_child(Cow::Borrowed("adf-local-data"))
+                        .attr(&format!("data-tag=\"decision-list\""))
+                        .attr(&format!("id=\"{}\"", attrs.local_id)),
+                );
+                let decision_list = node.ul();
+                inner_adf_to_html(decision_list, content);
             }
             AdfNode::DecisionItem { content, attrs } => {
-                let attrs = vec![
-                    format!("id=\"{}\"", attrs.local_id),
-                    format!("data-state=\"{}\"", attrs.state),
-                ];
-                let attrs_str = attrs.join(" ");
                 let child = node
                     .child(Cow::Borrowed("adf-decision-item"))
-                    .attr(&attrs_str);
+                    .attr(&format!("id=\"{}\"", attrs.local_id));
                 inner_adf_to_html(child, content);
             }
             AdfNode::Unknown => {
@@ -310,27 +333,17 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
 
 pub fn html_to_markdown(html: String) -> String {
     let converter = HtmlToMarkdown::builder()
-        //.add_handler(vec!["input"], |element: Element| {
-        //    let checked = element
-        //        .attrs
-        //        .iter()
-        //        .find(|attr| attr.name.local.as_ref() == "checked")
-        //        .is_some();
-        //    if checked {
-        //        Some("[x]".to_string())
-        //    } else {
-        //        Some("[ ]".to_string())
-        //    }
-        //})
         .add_handler(
             vec![
+                "img",
                 "input",
+                "figure",
                 "adf-emoji",
                 "adf-status",
                 "adf-media-single",
                 "adf-media-group",
                 "adf-decision-item",
-                "adf-decision-list",
+                "adf-local-data",
             ],
             |element: Element| {
                 let attrs = element
@@ -429,22 +442,55 @@ mod tests {
     #[test]
     fn test_media_group_roundtrip() {
         let adf = AdfNode::Doc {
-            content: vec![AdfNode::MediaGroup {
-                content: vec![MediaNode {
-                    media_type: "image".into(),
-                    attrs: MediaAttrs {
-                        alt: None,
-                        height: None,
-                        width: None,
-                        id: "media-id".into(),
-                        collection: "collection".into(),
-                        type_: "file".into(),
-                    },
-                    marks: vec![MediaMark::Link(LinkMark {
-                        href: "https://example.com".into(),
-                        ..Default::default()
-                    })],
-                }],
+            content: vec![AdfNode::Paragraph {
+                content: Some(vec![AdfNode::MediaGroup {
+                    content: vec![MediaNode {
+                        media_type: "image".into(),
+                        attrs: MediaAttrs {
+                            alt: Some("Image description".into()),
+                            height: None,
+                            width: None,
+                            id: "media-id".into(),
+                            collection: "collection".into(),
+                            type_: "file".into(),
+                        },
+                        marks: vec![MediaMark::Link(LinkMark {
+                            href: "https://example.com".into(),
+                            ..Default::default()
+                        })],
+                    }],
+                }]),
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_media_single_roundtrip() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Paragraph {
+                content: Some(vec![AdfNode::MediaSingle {
+                    attrs: Some(MediaSingleAttrs {
+                        layout: Some("center".into()),
+                    }),
+                    content: vec![MediaNode {
+                        media_type: "image".into(),
+                        attrs: MediaAttrs {
+                            alt: None,
+                            height: Some(300),
+                            width: Some(300),
+                            id: "media-id".into(),
+                            collection: "collection".into(),
+                            type_: "file".into(),
+                        },
+                        marks: vec![MediaMark::Link(LinkMark {
+                            href: "https://example.com".into(),
+                            ..Default::default()
+                        })],
+                    }],
+                }]),
             }],
             version: 1,
         };
