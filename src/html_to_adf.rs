@@ -493,16 +493,17 @@ impl ADFBuilder {
             BlockContext::TableBlock(_, nodes)
             | BlockContext::Paragraph(nodes)
             | BlockContext::Blockquote(nodes)
+            | BlockContext::Heading(_, nodes)
             | BlockContext::ListItem(nodes)
             | BlockContext::Document(nodes) => nodes.push(node),
             BlockContext::CustomBlock(block_ty, nodes, _) => match block_ty {
                 CustomBlockType::Div | CustomBlockType::Expand | CustomBlockType::Panel => {
                     nodes.push(node);
                 }
-                _ => panic!("Invalid block context for custom block: {block_ty:?}"),
+                _ => panic!("Invalid block context for custom block: {block_ty:?} {node:?}"),
             },
-            node => {
-                panic!("Invalid block context for block node: {node:?}");
+            frame => {
+                panic!("Invalid block context for block node: {frame:?} {node:?}");
             }
         }
     }

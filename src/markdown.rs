@@ -203,3 +203,118 @@ pub fn markdown_to_adf(markdown: &str) -> Option<AdfNode> {
     eprintln!("HTML: {}", sanitized);
     Some(html_to_adf(&sanitized))
 }
+
+#[cfg(feature = "fuzzing")]
+#[cfg(test)]
+mod tests {
+    use crate::adf::adf_types::*;
+    use crate::markdown::{adf_to_markdown, markdown_to_adf};
+    use rand::Rng;
+    use rand::prelude::IndexedRandom;
+
+    fn insert_into_markdown(markdown: &mut String, position: usize, insert: &str) {
+        let pos = position.min(markdown.len());
+        markdown.insert_str(pos, insert);
+    }
+
+    fn remove_from_markdown(markdown: &mut String, position: usize, amount: usize) {
+        if position >= markdown.len() {
+            return;
+        }
+        let end = (position + amount).min(markdown.len());
+        markdown.replace_range(position..end, "");
+    }
+
+    fn sample_adf_doc() -> AdfNode {
+        AdfNode::Doc {
+            content: vec![
+                AdfNode::Heading {
+                    attrs: HeadingAttrs { level: 2 },
+                    content: Some(vec![AdfNode::Text {
+                        text: "User document".into(),
+                        marks: None,
+                    }]),
+                },
+                AdfNode::Paragraph {
+                    content: Some(vec![
+                        AdfNode::Text {
+                            text: "Hello ".into(),
+                            marks: None,
+                        },
+                        AdfNode::Emoji {
+                            attrs: EmojiAttrs {
+                                short_name: ":smile:".into(),
+                                text: Some("😄".into()),
+                            },
+                        },
+                        AdfNode::Mention {
+                            attrs: MentionAttrs {
+                                id: "user-1".into(),
+                                text: Some("User".into()),
+                                access_level: None,
+                                user_type: None,
+                            },
+                        },
+                        AdfNode::Text {
+                            text: " and welcome!".into(),
+                            marks: None,
+                        },
+                    ]),
+                },
+                AdfNode::Status {
+                    attrs: StatusAttrs {
+                        text: "In Progress".into(),
+                        color: "blue".into(),
+                        local_id: Some("status-1".into()),
+                    },
+                },
+            ],
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn fuzz_user_editing_markdown_pipeline() {
+        let adf = sample_adf_doc();
+        let mut markdown = adf_to_markdown(&[adf]);
+
+        let inserts = [
+            " Hello world! ",
+            "\n## Inserted heading\n",
+            "<adf-emoji aria-alt=\":tada:\">🎉</adf-emoji>",
+            "**bold text**",
+            "`inline code`",
+            "\n- new bullet\n",
+        ];
+
+        let mut rng = rand::rng();
+
+        for _ in 0..100 {
+            let choice = rng.random_range(0..3);
+            match choice {
+                0 => {
+                    // Insert at random position
+                    let insert = inserts.choose(&mut rng).unwrap();
+                    let pos = rng.random_range(0..=markdown.len());
+                    insert_into_markdown(&mut markdown, pos, insert);
+                }
+                1 => {
+                    // Remove at random position
+                    let pos = rng.random_range(0..markdown.len().saturating_sub(1));
+                    let len = rng.random_range(1..=10).min(markdown.len() - pos);
+                    remove_from_markdown(&mut markdown, pos, len);
+                }
+                _ => {
+                    // Do nothing (simulate pause)
+                }
+            }
+
+            // Ensure it does not panic and produces some ADF
+            let adf = markdown_to_adf(&markdown);
+            assert!(
+                matches!(adf, Some(AdfNode::Doc { .. })),
+                "ADF not a document after edit cycle"
+            );
+        }
+    }
+}
