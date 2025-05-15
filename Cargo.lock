@@ -93,7 +93,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37c41f2e820335867ea7c9b35bcd6a120b038d94d63069fc157f1fd8f9e24dc3"
 dependencies = [
  "html-escape",
- "html5ever 0.29.1",
+ "html5ever",
  "markup5ever_rcdom",
 ]
 
@@ -114,19 +114,7 @@ checksum = "3b7410cae13cbc75623c98ac4cbfd1f0bedddf3227afc24f370cf0f50a44a11c"
 dependencies = [
  "log",
  "mac",
- "markup5ever 0.14.1",
- "match_token",
-]
-
-[[package]]
-name = "html5ever"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "953cbbe631aae7fc0a112702ad5d3aaf09da38beaf45ea84610d6e1c358f569c"
-dependencies = [
- "log",
- "mac",
- "markup5ever 0.16.1",
+ "markup5ever",
  "match_token",
 ]
 
@@ -222,24 +210,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "markup5ever"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a8096766c229e8c88a3900c9b44b7e06aa7f7343cc229158c3e58ef8f9973a"
-dependencies = [
- "log",
- "tendril",
- "web_atoms",
-]
-
-[[package]]
 name = "markup5ever_rcdom"
 version = "0.5.0-unofficial"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9cb12459c4cab18dcc580159590f404ad78c0a9c5435ace80288ed43abdce31"
 dependencies = [
- "html5ever 0.29.1",
- "markup5ever 0.14.1",
+ "html5ever",
+ "markup5ever",
  "tendril",
  "xml5ever",
 ]
@@ -516,8 +493,9 @@ dependencies = [
  "chrono",
  "htmd",
  "html-escape",
- "html5ever 0.31.0",
+ "html5ever",
  "markdown",
+ "markup5ever",
  "markup5ever_rcdom",
  "serde",
  "serde_json",
@@ -662,18 +640,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "web_atoms"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b9c5f0bc545ea3b20b423e33b9b457764de0b3730cd957f6c6aa6c301785f6e"
-dependencies = [
- "phf",
- "phf_codegen",
- "string_cache",
- "string_cache_codegen",
-]
-
-[[package]]
 name = "windows-core"
 version = "0.61.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -804,5 +770,5 @@ checksum = "2278b4bf33071ba8e30368a59436c65eec8e01c49d5c29b3dfeb0cdc45331383"
 dependencies = [
  "log",
  "mac",
- "markup5ever 0.14.1",
+ "markup5ever",
 ]

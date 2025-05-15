@@ -220,6 +220,7 @@ pub(crate) fn inline_card_end_handler() -> HandlerFn {
                 return false;
             }
         };
+        state.current_text.clear();
         state.stack.pop();
         let href = attrs.get("href").cloned().unwrap_or_default();
         ADFBuilder::push_block_to_parent(
@@ -228,7 +229,6 @@ pub(crate) fn inline_card_end_handler() -> HandlerFn {
                 attrs: crate::adf::adf_types::InlineCardAttrs { url: Some(href) },
             },
         );
-        state.current_text.clear();
 
         true
     })
@@ -302,7 +302,6 @@ pub(crate) fn summary_end_handler() -> HandlerFn {
     Box::new(|state: &mut ADFBuilderState, _element: Element| {
         // Capture and clean the text collected in current_text
         let summary_text = state.current_text.trim().to_string();
-        eprintln!("Summary text: {}", summary_text);
         state.current_text.clear();
 
         // Find the nearest CustomBlock of type Expand or NestedExpand and store the title
@@ -318,7 +317,6 @@ pub(crate) fn summary_end_handler() -> HandlerFn {
                 )
             })
         {
-            eprintln!("Stack push");
             attrs.insert("data-summary".to_string(), summary_text);
             true
         } else {
@@ -334,7 +332,6 @@ pub(crate) fn details_end_handler() -> HandlerFn {
 
         if let Some(BlockContext::CustomBlock(ty, nodes, attrs)) = state.stack.pop() {
             let title = attrs.get("data-summary").cloned().unwrap_or_default();
-            eprintln!("Details end: {:?} {:?}", title, attrs);
 
             match ty {
                 CustomBlockType::Expand => {

@@ -242,6 +242,7 @@ pub(crate) fn p_start_handler() -> HandlerFn {
 pub(crate) fn pre_start_handler() -> HandlerFn {
     Box::new(|state, _| {
         ADFBuilder::flush_text(state);
+        state.preformatted = true;
         state.stack.push(BlockContext::CodeBlock(vec![]));
         true
     })
@@ -292,6 +293,7 @@ pub(crate) fn a_start_handler() -> HandlerFn {
                 href: href.value.to_string(),
                 ..Default::default()
             }));
+            state.heavy_trim = true;
         }
         true
     })
@@ -367,6 +369,7 @@ pub(crate) fn p_end_handler() -> HandlerFn {
 pub(crate) fn pre_end_handler() -> HandlerFn {
     Box::new(|state, _| {
         ADFBuilder::flush_text(state);
+        state.preformatted = false;
         ADFBuilder::close_current_block(state);
         true
     })
@@ -384,6 +387,7 @@ pub(crate) fn blockquote_end_handler() -> HandlerFn {
 pub(crate) fn mark_end_handler() -> HandlerFn {
     Box::new(|state, _| {
         ADFBuilder::flush_text(state);
+        state.heavy_trim = false;
         state.mark_stack.pop();
         true
     })

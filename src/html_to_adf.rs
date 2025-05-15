@@ -58,6 +58,8 @@ impl ADFBuilder {
                 stack: vec![BlockContext::Document(vec![])],
                 mark_stack: vec![],
                 current_text: String::new(),
+                preformatted: false,
+                heavy_trim: false,
                 custom_block_id: None,
                 custom_block_tag: None,
             }),
@@ -224,6 +226,14 @@ impl ADFBuilder {
                 text = clean_surrounding_text(&text).to_string();
             }
 
+            if !state.preformatted {
+                text = text.trim_end_matches('\n').to_string();
+            }
+
+            if state.heavy_trim {
+                text = text.trim().to_string();
+            }
+
             if text.trim().is_empty() {
                 return;
             }
@@ -280,33 +290,39 @@ impl ADFBuilder {
         }
     }
 
+    fn flatten_top_level_paragraph(nodes: Vec<AdfNode>, parent_nodes: &mut Vec<AdfNode>) {
+        if !nodes.is_empty() {
+            if nodes.iter().all(|n| n.is_top_level_block()) {
+                parent_nodes.extend(nodes);
+            } else {
+                parent_nodes.push(AdfNode::Paragraph {
+                    content: Some(nodes),
+                });
+            }
+        }
+    }
+
     pub fn close_current_block(state: &mut ADFBuilderState) {
         let frame = state.stack.pop().expect("Expected a block context");
-        let parent = state
+        let mut parent = state
             .stack
             .last_mut()
             .expect("Document should always be present");
         match frame {
-            BlockContext::Paragraph(nodes) => match parent {
+            BlockContext::Paragraph(nodes) => match &mut parent {
                 BlockContext::Document(parent_nodes)
                 | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
                 | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
                 | BlockContext::Blockquote(parent_nodes)
-                | BlockContext::ListItem(parent_nodes) => parent_nodes.push(AdfNode::Paragraph {
-                    content: Some(nodes),
-                }),
+                | BlockContext::ListItem(parent_nodes) => {
+                    Self::flatten_top_level_paragraph(nodes, parent_nodes);
+                }
                 BlockContext::CustomBlock(block_ty, parent_nodes, _) => match block_ty {
-                    CustomBlockType::Div => {
-                        parent_nodes.push(AdfNode::Paragraph {
-                            content: Some(nodes),
-                        });
-                    }
-                    CustomBlockType::Expand
+                    CustomBlockType::Div
+                    | CustomBlockType::Expand
                     | CustomBlockType::NestedExpand
                     | CustomBlockType::Panel => {
-                        parent_nodes.push(AdfNode::Paragraph {
-                            content: Some(nodes),
-                        });
+                        Self::flatten_top_level_paragraph(nodes, parent_nodes);
                     }
                     parent => {
                         panic!("Invalid parent for Paragraph: {parent:?}");
@@ -319,6 +335,7 @@ impl ADFBuilder {
                 | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
                 | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
                 | BlockContext::ListItem(parent_nodes)
+                | BlockContext::Blockquote(parent_nodes)
                 | BlockContext::CustomBlock(CustomBlockType::Div, parent_nodes, _) => {
                     let text = lines.join("");
                     parent_nodes.push(AdfNode::CodeBlock {
@@ -350,6 +367,7 @@ impl ADFBuilder {
                 BlockContext::Document(parent_nodes)
                 | BlockContext::CustomBlock(CustomBlockType::Div, parent_nodes, _)
                 | BlockContext::Paragraph(parent_nodes)
+                | BlockContext::Blockquote(parent_nodes)
                 | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
                 | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
                 | BlockContext::ListItem(parent_nodes) => {
@@ -472,20 +490,17 @@ impl ADFBuilder {
             .last_mut()
             .expect("There should always be at least the Document node");
         match frame {
-            BlockContext::TableBlock(TableBlockType::Row, nodes)
-            | BlockContext::TableBlock(TableBlockType::Section, nodes)
-            | BlockContext::TableBlock(TableBlockType::Table, nodes)
+            BlockContext::TableBlock(_, nodes)
             | BlockContext::Paragraph(nodes)
             | BlockContext::Blockquote(nodes)
             | BlockContext::ListItem(nodes)
             | BlockContext::Document(nodes) => nodes.push(node),
-            BlockContext::CustomBlock(block_ty, nodes, _) => {
-                if block_ty == &CustomBlockType::Div {
+            BlockContext::CustomBlock(block_ty, nodes, _) => match block_ty {
+                CustomBlockType::Div | CustomBlockType::Expand | CustomBlockType::Panel => {
                     nodes.push(node);
-                } else {
-                    panic!("Invalid block context for custom block: {block_ty:?}");
                 }
-            }
+                _ => panic!("Invalid block context for custom block: {block_ty:?}"),
+            },
             node => {
                 panic!("Invalid block context for block node: {node:?}");
             }

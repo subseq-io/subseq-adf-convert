@@ -5,10 +5,6 @@ use crate::html_builder::*;
 
 use crate::adf::adf_types::{AdfMark, AdfNode, MediaMark, MediaNode, Subsup, TaskItemState};
 
-pub fn close(node: Void) {
-    node.attr("/");
-}
-
 pub fn adf_to_html(adf: Vec<AdfNode>) -> String {
     let mut buffer = Buffer::new();
     let node = buffer.body();
@@ -53,7 +49,7 @@ fn media_adf_to_html(mut node: Node, media: Vec<MediaNode>) {
                         .map(|a| a.as_str())
                         .collect::<Vec<_>>()
                         .join(" ");
-                    close(node.img().attr(&attrs_str));
+                    node.img().attr(&attrs_str);
                 }
                 "link" => {
                     let mut a = node.a().attr(&format!("href=\"{}\"", link.href));
@@ -128,7 +124,9 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 }
                 inner_adf_to_html(expand, content);
             }
-            AdfNode::HardBreak => close(node.br()),
+            AdfNode::HardBreak => {
+                node.br();
+            }
             AdfNode::Heading { attrs, content } => {
                 let heading = match attrs.level {
                     1 => node.h1(),
@@ -151,7 +149,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                         .attr("data-inline-card=\"true\"")
                         .attr("target=\"_blank\"")
                         .attr("rel=\"noopener noreferrer\"");
-                    writeln!(a_tag, "{}", url).ok();
+                    writeln!(a_tag, "External Link").ok();
                 }
             }
             AdfNode::ListItem { content } => {
@@ -203,7 +201,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 }
             }
             AdfNode::Rule => {
-                close(node.hr());
+                node.hr();
             }
             AdfNode::Status { attrs } => {
                 let mut status = node.child(Cow::Borrowed("adf-status")).attr(&format!(
@@ -303,11 +301,9 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 apply_marks(&mut node, &marks.unwrap_or_default(), &text).ok();
             }
             AdfNode::TaskList { content, attrs } => {
-                close(
-                    node.void_child(Cow::Borrowed("adf-local-data"))
-                        .attr(&format!("data-tag=\"task-list\""))
-                        .attr(&format!("id=\"{}\"", attrs.local_id)),
-                );
+                node.child(Cow::Borrowed("adf-local-data"))
+                    .attr(&format!("data-tag=\"task-list\""))
+                    .attr(&format!("id=\"{}\"", attrs.local_id));
                 let task_list = node.ul();
                 inner_adf_to_html(task_list, content);
             }
@@ -319,19 +315,15 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     ""
                 };
                 let local_id = attrs.local_id;
-                close(
-                    task_item
-                        .input()
-                        .attr(&format!("id=\"{}\" type=checkbox {}", local_id, checked)),
-                );
+                task_item
+                    .input()
+                    .attr(&format!("id=\"{}\" type=checkbox {}", local_id, checked));
                 inner_adf_to_html(task_item, content);
             }
             AdfNode::DecisionList { content, attrs } => {
-                close(
-                    node.void_child(Cow::Borrowed("adf-local-data"))
-                        .attr(&format!("data-tag=\"decision-list\""))
-                        .attr(&format!("id=\"{}\"", attrs.local_id)),
-                );
+                node.child(Cow::Borrowed("adf-local-data"))
+                    .attr(&format!("data-tag=\"decision-list\""))
+                    .attr(&format!("id=\"{}\"", attrs.local_id));
                 let decision_list = node.ul();
                 inner_adf_to_html(decision_list, content);
             }
@@ -428,24 +420,22 @@ mod tests {
     #[test]
     fn test_media_group_roundtrip() {
         let adf = AdfNode::Doc {
-            content: vec![AdfNode::Paragraph {
-                content: Some(vec![AdfNode::MediaGroup {
-                    content: vec![MediaNode {
-                        media_type: "image".into(),
-                        attrs: MediaAttrs {
-                            alt: Some("Image description".into()),
-                            height: None,
-                            width: None,
-                            id: "media-id".into(),
-                            collection: "collection".into(),
-                            type_: "file".into(),
-                        },
-                        marks: vec![MediaMark::Link(LinkMark {
-                            href: "https://example.com".into(),
-                            ..Default::default()
-                        })],
-                    }],
-                }]),
+            content: vec![AdfNode::MediaGroup {
+                content: vec![MediaNode {
+                    media_type: "image".into(),
+                    attrs: MediaAttrs {
+                        alt: Some("Image description".into()),
+                        height: None,
+                        width: None,
+                        id: "media-id".into(),
+                        collection: "collection".into(),
+                        type_: "file".into(),
+                    },
+                    marks: vec![MediaMark::Link(LinkMark {
+                        href: "https://example.com".into(),
+                        ..Default::default()
+                    })],
+                }],
             }],
             version: 1,
         };
@@ -456,27 +446,25 @@ mod tests {
     #[test]
     fn test_media_single_roundtrip() {
         let adf = AdfNode::Doc {
-            content: vec![AdfNode::Paragraph {
-                content: Some(vec![AdfNode::MediaSingle {
-                    attrs: Some(MediaSingleAttrs {
-                        layout: Some("center".into()),
-                    }),
-                    content: vec![MediaNode {
-                        media_type: "image".into(),
-                        attrs: MediaAttrs {
-                            alt: None,
-                            height: Some(300),
-                            width: Some(300),
-                            id: "media-id".into(),
-                            collection: "collection".into(),
-                            type_: "file".into(),
-                        },
-                        marks: vec![MediaMark::Link(LinkMark {
-                            href: "https://example.com".into(),
-                            ..Default::default()
-                        })],
-                    }],
-                }]),
+            content: vec![AdfNode::MediaSingle {
+                attrs: Some(MediaSingleAttrs {
+                    layout: Some("center".into()),
+                }),
+                content: vec![MediaNode {
+                    media_type: "image".into(),
+                    attrs: MediaAttrs {
+                        alt: None,
+                        height: Some(300),
+                        width: Some(300),
+                        id: "media-id".into(),
+                        collection: "collection".into(),
+                        type_: "file".into(),
+                    },
+                    marks: vec![MediaMark::Link(LinkMark {
+                        href: "https://example.com".into(),
+                        ..Default::default()
+                    })],
+                }],
             }],
             version: 1,
         };
@@ -803,6 +791,534 @@ mod tests {
                     },
                 ],
             }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_full_doc_with_header_paragraph_list_table() {
+        let adf = AdfNode::Doc {
+            content: vec![
+                AdfNode::Heading {
+                    attrs: HeadingAttrs { level: 1 },
+                    content: Some(vec![AdfNode::Text {
+                        text: "Document Title".into(),
+                        marks: None,
+                    }]),
+                },
+                AdfNode::Paragraph {
+                    content: Some(vec![AdfNode::Text {
+                        text: "Introductory paragraph.".into(),
+                        marks: None,
+                    }]),
+                },
+                AdfNode::BulletList {
+                    content: vec![
+                        AdfNode::ListItem {
+                            content: vec![AdfNode::Text {
+                                text: "Item 1".into(),
+                                marks: None,
+                            }],
+                        },
+                        AdfNode::ListItem {
+                            content: vec![AdfNode::Text {
+                                text: "Item 2".into(),
+                                marks: None,
+                            }],
+                        },
+                    ],
+                },
+                AdfNode::Table {
+                    attrs: None,
+                    content: vec![
+                        AdfNode::TableRow {
+                            content: vec![
+                                AdfNode::TableHeader {
+                                    attrs: None,
+                                    content: vec![AdfNode::Text {
+                                        text: "Header 1".into(),
+                                        marks: None,
+                                    }],
+                                },
+                                AdfNode::TableHeader {
+                                    attrs: None,
+                                    content: vec![AdfNode::Text {
+                                        text: "Header 2".into(),
+                                        marks: None,
+                                    }],
+                                },
+                            ],
+                        },
+                        AdfNode::TableRow {
+                            content: vec![
+                                AdfNode::TableCell {
+                                    attrs: None,
+                                    content: vec![AdfNode::Text {
+                                        text: "Cell 1".into(),
+                                        marks: None,
+                                    }],
+                                },
+                                AdfNode::TableCell {
+                                    attrs: None,
+                                    content: vec![AdfNode::Text {
+                                        text: "Cell 2".into(),
+                                        marks: None,
+                                    }],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_full_doc_with_decision_status_panel() {
+        let adf = AdfNode::Doc {
+            content: vec![
+                AdfNode::DecisionList {
+                    attrs: LocalId {
+                        local_id: "decision-1".into(),
+                    },
+                    content: vec![AdfNode::DecisionItem {
+                        attrs: DecisionItemAttrs {
+                            state: "DECIDED".into(),
+                            local_id: "item-1".into(),
+                        },
+                        content: vec![AdfNode::Text {
+                            text: "We will proceed.".into(),
+                            marks: None,
+                        }],
+                    }],
+                },
+                AdfNode::Paragraph {
+                    content: Some(vec![AdfNode::Status {
+                        attrs: StatusAttrs {
+                            text: "Approved".into(),
+                            color: "green".into(),
+                            local_id: Some("status-1".into()),
+                        },
+                    }]),
+                },
+                AdfNode::Panel {
+                    attrs: PanelAttrs {
+                        panel_type: "info".into(),
+                    },
+                    content: vec![AdfNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "This is important context.".into(),
+                            marks: None,
+                        }]),
+                    }],
+                },
+            ],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_full_doc_with_media_inline_expand() {
+        let adf = AdfNode::Doc {
+            content: vec![
+                AdfNode::Paragraph {
+                    content: Some(vec![AdfNode::InlineCard {
+                        attrs: InlineCardAttrs {
+                            url: Some("https://example.com".into()),
+                        },
+                    }]),
+                },
+                AdfNode::MediaGroup {
+                    content: vec![MediaNode {
+                        media_type: "image".into(),
+                        attrs: MediaAttrs {
+                            alt: Some("Diagram".into()),
+                            height: None,
+                            width: None,
+                            id: "media-id".into(),
+                            collection: "collection".into(),
+                            type_: "file".into(),
+                        },
+                        marks: vec![MediaMark::Link(LinkMark {
+                            href: "https://example.com/image".into(),
+                            ..Default::default()
+                        })],
+                    }],
+                },
+                AdfNode::Expand {
+                    attrs: ExpandAttrs {
+                        title: Some("See more".into()),
+                    },
+                    content: vec![AdfNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Hidden details.".into(),
+                            marks: None,
+                        }]),
+                    }],
+                },
+            ],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_paragraph_with_mixed_inline() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Paragraph {
+                content: Some(vec![
+                    AdfNode::Text {
+                        text: "Hello ".into(),
+                        marks: None,
+                    },
+                    AdfNode::Emoji {
+                        attrs: EmojiAttrs {
+                            text: Some("😄".into()),
+                            short_name: ":smile:".into(),
+                        },
+                    },
+                    AdfNode::Mention {
+                        attrs: MentionAttrs {
+                            id: "user-1".into(),
+                            text: Some("User".into()),
+                            access_level: None,
+                            user_type: None,
+                        },
+                    },
+                    AdfNode::Text {
+                        text: "link".into(),
+                        marks: Some(vec![AdfMark::Link(LinkMark {
+                            href: "https://example.com".into(),
+                            ..Default::default()
+                        })]),
+                    },
+                    AdfNode::Status {
+                        attrs: StatusAttrs {
+                            text: "In Progress".into(),
+                            color: "blue".into(),
+                            local_id: Some("status-1".into()),
+                        },
+                    },
+                    AdfNode::InlineCard {
+                        attrs: InlineCardAttrs {
+                            url: Some("https://card.com".into()),
+                        },
+                    },
+                ]),
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_nested_expand_inside_panel() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Panel {
+                attrs: PanelAttrs {
+                    panel_type: "info".into(),
+                },
+                content: vec![
+                    AdfNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Intro panel".into(),
+                            marks: None,
+                        }]),
+                    },
+                    AdfNode::Expand {
+                        attrs: ExpandAttrs {
+                            title: Some("Expand inside panel".into()),
+                        },
+                        content: vec![AdfNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "More details".into(),
+                                marks: None,
+                            }]),
+                        }],
+                    },
+                ],
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_mixed_decision_and_task_lists() {
+        let adf = AdfNode::Doc {
+            content: vec![
+                AdfNode::TaskList {
+                    attrs: LocalId {
+                        local_id: "task-list".into(),
+                    },
+                    content: vec![
+                        AdfNode::TaskItem {
+                            attrs: TaskItemAttrs {
+                                local_id: "task-1".into(),
+                                state: TaskItemState::Todo,
+                            },
+                            content: vec![AdfNode::Text {
+                                text: "First task".into(),
+                                marks: None,
+                            }],
+                        },
+                        AdfNode::TaskItem {
+                            attrs: TaskItemAttrs {
+                                local_id: "task-2".into(),
+                                state: TaskItemState::Done,
+                            },
+                            content: vec![AdfNode::Text {
+                                text: "Second task".into(),
+                                marks: None,
+                            }],
+                        },
+                    ],
+                },
+                AdfNode::DecisionList {
+                    attrs: LocalId {
+                        local_id: "decision-list".into(),
+                    },
+                    content: vec![
+                        AdfNode::DecisionItem {
+                            attrs: DecisionItemAttrs {
+                                state: "DECIDED".into(),
+                                local_id: "decision-1".into(),
+                            },
+                            content: vec![AdfNode::Text {
+                                text: "Agreed decision".into(),
+                                marks: None,
+                            }],
+                        },
+                        AdfNode::DecisionItem {
+                            attrs: DecisionItemAttrs {
+                                state: "DECIDED".into(),
+                                local_id: "decision-2".into(),
+                            },
+                            content: vec![AdfNode::Text {
+                                text: "Pending decision".into(),
+                                marks: None,
+                            }],
+                        },
+                    ],
+                },
+            ],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_table_with_complex_content() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Table {
+                attrs: None,
+                content: vec![
+                    AdfNode::TableRow {
+                        content: vec![
+                            AdfNode::TableHeader {
+                                attrs: None,
+                                content: vec![
+                                    AdfNode::Text {
+                                        text: "Bold header".into(),
+                                        marks: Some(vec![AdfMark::Strong]),
+                                    },
+                                    AdfNode::Emoji {
+                                        attrs: EmojiAttrs {
+                                            text: Some("📊".into()),
+                                            short_name: ":bar_chart:".into(),
+                                        },
+                                    },
+                                ],
+                            },
+                            AdfNode::TableHeader {
+                                attrs: None,
+                                content: vec![AdfNode::Text {
+                                    text: "Plain header".into(),
+                                    marks: None,
+                                }],
+                            },
+                        ],
+                    },
+                    AdfNode::TableRow {
+                        content: vec![
+                            AdfNode::TableCell {
+                                attrs: None,
+                                content: vec![
+                                    AdfNode::Text {
+                                        text: "Line 1 ".into(),
+                                        marks: None,
+                                    },
+                                    AdfNode::Text {
+                                        text: "Line 2".into(),
+                                        marks: Some(vec![AdfMark::Strong]),
+                                    },
+                                ],
+                            },
+                            AdfNode::TableCell {
+                                attrs: None,
+                                content: vec![AdfNode::InlineCard {
+                                    attrs: InlineCardAttrs {
+                                        url: Some("https://inline.cell".into()),
+                                    },
+                                }],
+                            },
+                        ],
+                    },
+                ],
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_complex_blockquote() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Blockquote {
+                content: vec![
+                    AdfNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Intro quote".into(),
+                            marks: None,
+                        }]),
+                    },
+                    AdfNode::OrderedList {
+                        content: vec![
+                            AdfNode::ListItem {
+                                content: vec![AdfNode::Text {
+                                    text: "List item 1".into(),
+                                    marks: None,
+                                }],
+                            },
+                            AdfNode::ListItem {
+                                content: vec![AdfNode::Text {
+                                    text: "List item 2".into(),
+                                    marks: None,
+                                }],
+                            },
+                        ],
+                        attrs: None,
+                    },
+                    AdfNode::CodeBlock {
+                        content: Some(vec![AdfNode::Text {
+                            text: "let x = 10;".into(),
+                            marks: None,
+                        }]),
+                        attrs: None,
+                    },
+                ],
+            }],
+            version: 1,
+        };
+        roundtrip_adf_html_adf(adf.clone());
+        roundtrip_adf_html_md_html_adf(adf);
+    }
+
+    #[test]
+    fn test_full_document_comprehensive() {
+        let adf = AdfNode::Doc {
+            content: vec![
+                AdfNode::Heading {
+                    attrs: HeadingAttrs { level: 1 },
+                    content: Some(vec![AdfNode::Text {
+                        text: "Comprehensive Doc".into(),
+                        marks: None,
+                    }]),
+                },
+                AdfNode::Paragraph {
+                    content: Some(vec![
+                        AdfNode::Text {
+                            text: "Mixed content paragraph ".into(),
+                            marks: None,
+                        },
+                        AdfNode::Emoji {
+                            attrs: EmojiAttrs {
+                                text: Some("🎉".into()),
+                                short_name: ":tada:".into(),
+                            },
+                        },
+                        AdfNode::Status {
+                            attrs: StatusAttrs {
+                                text: "Done".into(),
+                                color: "green".into(),
+                                local_id: Some("status-4".into()),
+                            },
+                        },
+                    ]),
+                },
+                AdfNode::Rule,
+                AdfNode::MediaGroup {
+                    content: vec![MediaNode {
+                        media_type: "image".into(),
+                        attrs: MediaAttrs {
+                            alt: Some("Diagram".into()),
+                            collection: "collection".into(),
+                            height: Some(200),
+                            id: "media-1".into(),
+                            type_: "file".into(),
+                            width: Some(300),
+                        },
+                        marks: vec![MediaMark::Link(LinkMark {
+                            href: "https://example.com/image".into(),
+                            ..Default::default()
+                        })],
+                    }],
+                },
+                AdfNode::Expand {
+                    attrs: ExpandAttrs {
+                        title: Some("Expand Block".into()),
+                    },
+                    content: vec![AdfNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Expandable content.".into(),
+                            marks: None,
+                        }]),
+                    }],
+                },
+                AdfNode::Table {
+                    attrs: None,
+                    content: vec![
+                        AdfNode::TableRow {
+                            content: vec![AdfNode::TableHeader {
+                                attrs: None,
+                                content: vec![AdfNode::Text {
+                                    text: "Header 1".into(),
+                                    marks: None,
+                                }],
+                            }],
+                        },
+                        AdfNode::TableRow {
+                            content: vec![AdfNode::TableCell {
+                                attrs: None,
+                                content: vec![AdfNode::Text {
+                                    text: "Cell 1".into(),
+                                    marks: None,
+                                }],
+                            }],
+                        },
+                    ],
+                },
+                AdfNode::Blockquote {
+                    content: vec![AdfNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Quote in block".into(),
+                            marks: None,
+                        }]),
+                    }],
+                },
+            ],
             version: 1,
         };
         roundtrip_adf_html_adf(adf.clone());

@@ -262,9 +262,9 @@ impl Ctx {
         write!(self.wtr, "{:>w$}{}", "<", &tag, w = depth).unwrap();
         if is_self_closing {
             if is_preformatted {
-                self.tag_open = Some("/>");
+                self.tag_open = Some(" />");
             } else {
-                self.tag_open = Some("/>\n");
+                self.tag_open = Some(" />\n");
             }
         } else {
             if is_preformatted {

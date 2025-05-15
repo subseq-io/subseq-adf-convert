@@ -25,6 +25,8 @@ pub struct ADFBuilderState {
     pub stack: Vec<BlockContext>,
     pub mark_stack: Vec<AdfMark>,
     pub current_text: String,
+    pub preformatted: bool,
+    pub heavy_trim: bool,
     pub custom_block_id: Option<LocalId>,
     pub custom_block_tag: Option<String>,
 }

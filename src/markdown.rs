@@ -1,30 +1,35 @@
 use htmd::{Element, HtmlToMarkdown};
+use html5ever::serialize::{SerializeOpts, serialize};
 use markdown::{CompileOptions, Options, ParseOptions, to_html_with_options as markdown_to_html};
-use markup5ever_rcdom::{Handle, NodeData};
+use markup5ever_rcdom::{Handle, NodeData, SerializableHandle};
 
-use crate::{adf::adf_types::AdfNode, adf_to_html::adf_to_html, html_to_adf::html_to_adf};
+use crate::{
+    adf::adf_types::AdfNode, adf_to_html::adf_to_html, html_sanitize::normalize_html,
+    html_to_adf::html_to_adf,
+};
 
 pub(crate) fn table_handler(element: Element) -> Option<String> {
     let mut headers = vec![];
     let mut rows = vec![];
+    let internal_converter = create_converter();
 
     for child in element.node.children.borrow().iter() {
         if let NodeData::Element { ref name, .. } = child.data {
             match name.local.as_ref() {
                 "thead" => {
-                    if let Some(row) = extract_table_body(child).first() {
+                    if let Some(row) = extract_table_body(child, &internal_converter).first() {
                         headers.extend(row.clone());
                     }
                 }
                 "tbody" => {
-                    rows.extend(extract_table_body(child));
+                    rows.extend(extract_table_body(child, &internal_converter));
                 }
                 "tr" => {
                     // Fallback if <tr> directly inside <table>
                     if headers.is_empty() {
-                        headers.extend(extract_table_row(child));
+                        headers.extend(extract_table_row(child, &internal_converter));
                     } else {
-                        rows.push(extract_table_row(child));
+                        rows.push(extract_table_row(child, &internal_converter));
                     }
                 }
                 _ => {}
@@ -37,7 +42,13 @@ pub(crate) fn table_handler(element: Element) -> Option<String> {
     }
 
     let mut md = String::from("\n\n| ");
-    md.push_str(&headers.join(" | "));
+    md.push_str(
+        &headers
+            .iter()
+            .map(|r| trim_newlines(r))
+            .collect::<Vec<_>>()
+            .join(" | "),
+    );
     md.push_str(" |\n|");
 
     if headers.is_empty() {
@@ -54,7 +65,12 @@ pub(crate) fn table_handler(element: Element) -> Option<String> {
 
     for row in rows {
         md.push_str("| ");
-        md.push_str(&row.join(" | "));
+        md.push_str(
+            &row.iter()
+                .map(|r| trim_newlines(r))
+                .collect::<Vec<_>>()
+                .join(" | "),
+        );
         md.push_str(" |\n");
     }
 
@@ -62,14 +78,14 @@ pub(crate) fn table_handler(element: Element) -> Option<String> {
     Some(md)
 }
 
-fn extract_table_body(node: &Handle) -> Vec<Vec<String>> {
+fn extract_table_body(node: &Handle, converter: &HtmlToMarkdown) -> Vec<Vec<String>> {
     node.children
         .borrow()
         .iter()
         .filter_map(|child| {
             if let NodeData::Element { ref name, .. } = child.data {
                 if name.local.as_ref() == "tr" {
-                    Some(extract_table_row(child))
+                    Some(extract_table_row(child, converter))
                 } else {
                     None
                 }
@@ -80,7 +96,7 @@ fn extract_table_body(node: &Handle) -> Vec<Vec<String>> {
         .collect()
 }
 
-fn extract_table_row(node: &Handle) -> Vec<String> {
+fn extract_table_row(node: &Handle, converter: &HtmlToMarkdown) -> Vec<String> {
     node.children
         .borrow()
         .iter()
@@ -88,7 +104,21 @@ fn extract_table_row(node: &Handle) -> Vec<String> {
             if let NodeData::Element { ref name, .. } = child.data {
                 let tag = name.local.as_ref();
                 if tag == "th" || tag == "td" {
-                    Some(get_node_content(child).trim().to_string())
+                    let mut buf = Vec::new();
+                    serialize(
+                        &mut buf,
+                        &SerializableHandle::from(child.clone()),
+                        SerializeOpts::default(),
+                    )
+                    .ok()?;
+                    let html_string = String::from_utf8(buf).ok()?;
+                    Some(trim_newlines(
+                        &converter
+                            .convert(&html_string)
+                            .unwrap_or_default()
+                            .trim()
+                            .to_string(),
+                    ))
                 } else {
                     None
                 }
@@ -99,23 +129,15 @@ fn extract_table_row(node: &Handle) -> Vec<String> {
         .collect()
 }
 
-fn get_node_content(node: &Handle) -> String {
-    let mut content = String::new();
-    for child in node.children.borrow().iter() {
-        match &child.data {
-            NodeData::Text { contents } => {
-                content.push_str(&contents.borrow());
-            }
-            NodeData::Element { .. } => {
-                content.push_str(&get_node_content(child));
-            }
-            _ => {}
-        }
-    }
-    content
+fn trim_newlines(text: &str) -> String {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
-pub fn html_to_markdown(html: String) -> String {
+fn create_converter() -> HtmlToMarkdown {
     let converter = HtmlToMarkdown::builder()
         .add_handler(vec!["table"], table_handler)
         .add_handler(
@@ -149,6 +171,11 @@ pub fn html_to_markdown(html: String) -> String {
             },
         )
         .build();
+    converter
+}
+
+pub fn html_to_markdown(html: String) -> String {
+    let converter = create_converter();
     converter.convert(&html).unwrap_or_default()
 }
 
@@ -172,5 +199,7 @@ pub fn markdown_to_adf(markdown: &str) -> Option<AdfNode> {
             tracing::warn!("Failed to convert markdown to HTML: {}", err);
         })
         .unwrap_or_default();
-    Some(html_to_adf(&html))
+    let sanitized = normalize_html(&html);
+    eprintln!("HTML: {}", sanitized);
+    Some(html_to_adf(&sanitized))
 }
