@@ -1324,4 +1324,41 @@ mod tests {
         roundtrip_adf_html_adf(adf.clone());
         roundtrip_adf_html_md_html_adf(adf);
     }
+
+    #[test]
+    fn test_header_with_emoji() {
+        let adf = AdfNode::Doc {
+            content: vec![AdfNode::Heading {
+                attrs: HeadingAttrs { level: 1 },
+                content: Some(vec![
+                    AdfNode::Text {
+                        text: "🚀 Let's launch ".into(),
+                        marks: None,
+                    },
+                    AdfNode::Emoji {
+                        attrs: EmojiAttrs {
+                            text: Some("😄".into()),
+                            short_name: ":smile:".into(),
+                        },
+                    },
+                    AdfNode::Text {
+                        text: " today".into(),
+                        marks: None,
+                    },
+                ]),
+            }],
+            version: 1,
+        };
+
+        // ADF -> Markdown -> ADF should roundtrip cleanly
+        let markdown = adf_to_markdown(&[adf.clone()]);
+        eprintln!("Markdown:\n{}", markdown);
+
+        let parsed = markdown_to_adf(&markdown).unwrap();
+
+        assert_eq!(
+            parsed, adf,
+            "Failed roundtrip for header containing emoji: {markdown}"
+        );
+    }
 }
