@@ -1,10 +1,11 @@
 use serde_json::{Value, from_value};
 use std::env;
 use std::fs;
+use subseq_adf_convert::adf_to_html::adf_to_html;
+use subseq_adf_convert::markdown::html_to_markdown;
 use subseq_adf_convert::markdown::markdown_to_adf;
 
 use subseq_adf_convert::adf::adf_types::AdfNode;
-use subseq_adf_convert::markdown::adf_to_markdown;
 
 fn main() {
     // Get the first argument (after the program name)
@@ -44,9 +45,9 @@ fn main() {
         eprintln!("Failed to parse 'description' as AdfNode: {}", err);
         std::process::exit(1);
     });
-    let markdown = adf_to_markdown(&[adf]);
-    // Print the markdown
-    println!("{}", markdown);
+    let html = adf_to_html(vec![adf]);
+    let markdown = html_to_markdown(html);
+    println!("\n---\n{}\n---\n", markdown);
 
     let adf = markdown_to_adf(&markdown);
     let adf = adf.unwrap_or_else(|| {

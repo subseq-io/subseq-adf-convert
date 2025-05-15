@@ -76,43 +76,11 @@ pub(crate) fn span_start_handler() -> HandlerFn {
             let style = style_attr.value.to_ascii_lowercase();
             if let Some(color) = extract_style(&style, "color") {
                 state.mark_stack.push(AdfMark::TextColor { color });
-            }
-            if let Some(bg) = extract_style(&style, "background-color") {
+            } else if let Some(bg) = extract_style(&style, "background-color") {
                 state
                     .mark_stack
                     .push(AdfMark::BackgroundColor { color: bg });
             }
-        } else {
-            ADFBuilder::flush_text(state);
-            state.stack.push(BlockContext::Paragraph(vec![]));
-        }
-        true
-    }) as HandlerFn
-}
-
-pub(crate) fn span_end_handler() -> HandlerFn {
-    Box::new(|state: &mut ADFBuilderState, _element: Element| {
-        ADFBuilder::flush_text(state);
-        // Pop all marks that might have been added by style (need robust tracking, for now pop both if present)
-        if let Some(last) = state.mark_stack.last() {
-            match last {
-                AdfMark::TextColor { .. } | AdfMark::BackgroundColor { .. } => {
-                    state.mark_stack.pop();
-                    // Attempt to pop again if both present on same tag
-                    if let Some(second) = state.mark_stack.last() {
-                        match second {
-                            AdfMark::TextColor { .. } | AdfMark::BackgroundColor { .. } => {
-                                state.mark_stack.pop();
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                _ => {}
-            }
-        } else {
-            ADFBuilder::flush_text(state);
-            ADFBuilder::close_current_block(state);
         }
         true
     }) as HandlerFn

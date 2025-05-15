@@ -143,6 +143,8 @@ fn create_converter() -> HtmlToMarkdown {
         .add_handler(
             vec![
                 "a",
+                "span",
+                "del",
                 "img",
                 "time",
                 "input",

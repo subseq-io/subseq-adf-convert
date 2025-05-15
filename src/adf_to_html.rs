@@ -322,10 +322,14 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                                 Subsup::Sub => node.sub(),
                             },
                             AdfMark::Underline => {
-                                node.div().attr("style=text-decoration:underline")
+                                node.span().attr("style=text-decoration:underline")
                             }
-                            AdfMark::TextColor { .. } => node.div(), // ignored
-                            AdfMark::BackgroundColor { .. } => node.div(), // ignored
+                            AdfMark::TextColor { color } => {
+                                node.span().attr(&format!("style=\"color: {color}\""))
+                            }
+                            AdfMark::BackgroundColor { color } => node
+                                .span()
+                                .attr(&format!("style=\"background-color: {color}\"")),
                         };
                         apply_marks(&mut wrapped_node, rest, text)
                     } else {
@@ -465,10 +469,10 @@ mod tests {
                         collection: "collection".into(),
                         type_: "file".into(),
                     },
-                    marks: vec![MediaMark::Link(LinkMark {
+                    marks: Some(vec![MediaMark::Link(LinkMark {
                         href: "https://example.com".into(),
                         ..Default::default()
-                    })],
+                    })]),
                 }],
             }],
             version: 1,
@@ -494,10 +498,10 @@ mod tests {
                         collection: "collection".into(),
                         type_: "file".into(),
                     },
-                    marks: vec![MediaMark::Link(LinkMark {
+                    marks: Some(vec![MediaMark::Link(LinkMark {
                         href: "https://example.com".into(),
                         ..Default::default()
-                    })],
+                    })]),
                 }],
             }],
             version: 1,
@@ -980,10 +984,10 @@ mod tests {
                             collection: "collection".into(),
                             type_: "file".into(),
                         },
-                        marks: vec![MediaMark::Link(LinkMark {
+                        marks: Some(vec![MediaMark::Link(LinkMark {
                             href: "https://example.com/image".into(),
                             ..Default::default()
-                        })],
+                        })]),
                     }],
                 },
                 AdfNode::Expand {
@@ -1274,8 +1278,10 @@ mod tests {
                 AdfNode::Paragraph {
                     content: Some(vec![
                         AdfNode::Text {
-                            text: "Mixed content paragraph ".into(),
-                            marks: None,
+                            text: " Mixed content paragraph ".into(),
+                            marks: Some(vec![AdfMark::TextColor {
+                                color: "blue".into(),
+                            }]),
                         },
                         AdfNode::Emoji {
                             attrs: EmojiAttrs {
@@ -1304,10 +1310,10 @@ mod tests {
                             type_: "file".into(),
                             width: Some(300),
                         },
-                        marks: vec![MediaMark::Link(LinkMark {
+                        marks: Some(vec![MediaMark::Link(LinkMark {
                             href: "https://example.com/image".into(),
                             ..Default::default()
-                        })],
+                        })]),
                     }],
                 },
                 AdfNode::Expand {
@@ -1316,8 +1322,15 @@ mod tests {
                     },
                     content: vec![AdfNode::Paragraph {
                         content: Some(vec![AdfNode::Text {
-                            text: "Expandable content.".into(),
-                            marks: None,
+                            text: "Expandable content. ".into(),
+                            marks: Some(vec![
+                                AdfMark::BackgroundColor {
+                                    color: "#000".into(),
+                                },
+                                AdfMark::TextColor {
+                                    color: "#fff".into(),
+                                },
+                            ]),
                         }]),
                     }],
                 },

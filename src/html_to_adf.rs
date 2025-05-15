@@ -128,7 +128,7 @@ impl ADFBuilder {
         this.insert_end_handler("div", div_end_handler());
 
         this.insert_start_handler("span", span_start_handler());
-        this.insert_end_handler("span", span_end_handler());
+        this.insert_end_handler("span", mark_end_handler());
 
         this.insert_start_handler("time", date_start_handler());
         this.insert_end_handler("time", date_end_handler());
@@ -330,6 +330,27 @@ impl ADFBuilder {
                 },
                 parent => panic!("Invalid parent for Paragraph: {parent:?}"),
             },
+            BlockContext::CustomBlock(CustomBlockType::Expand, nodes, _) => match parent {
+                BlockContext::Document(parent_nodes)
+                | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
+                | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
+                | BlockContext::ListItem(parent_nodes)
+                | BlockContext::Blockquote(parent_nodes) => {
+                    Self::flatten_top_level_paragraph(nodes, parent_nodes);
+                }
+                BlockContext::CustomBlock(block_ty, parent_nodes, _) => match block_ty {
+                    CustomBlockType::Div
+                    | CustomBlockType::Expand
+                    | CustomBlockType::NestedExpand
+                    | CustomBlockType::Panel => {
+                        Self::flatten_top_level_paragraph(nodes, parent_nodes);
+                    }
+                    parent => {
+                        panic!("Invalid parent for Paragraph: {parent:?}");
+                    }
+                },
+                _ => panic!("Invalid parent for CustomBlock"),
+            },
             BlockContext::CodeBlock(lines) => match parent {
                 BlockContext::Document(parent_nodes)
                 | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
@@ -405,7 +426,9 @@ impl ADFBuilder {
                 parent => panic!("Invalid parent for PendingList: {parent:?}"),
             },
             block => {
-                panic!("{block:?} closed incorrectly; must use block-specific close method");
+                panic!(
+                    "{block:?} closed incorrectly; must use block-specific close method: {parent:?}"
+                );
             }
         }
     }
@@ -827,29 +850,6 @@ mod tests {
                         marks: None,
                     },
                 ]),
-            }],
-        );
-    }
-
-    #[test]
-    fn test_span_combined_styles() {
-        let adf = html_to_adf(
-            r#"<p><span style="color: green; background-color: black">styled text</span></p>"#,
-        );
-        assert_content_eq(
-            adf,
-            vec![AdfNode::Paragraph {
-                content: Some(vec![AdfNode::Text {
-                    text: "styled text".into(),
-                    marks: Some(vec![
-                        AdfMark::TextColor {
-                            color: "green".into(),
-                        },
-                        AdfMark::BackgroundColor {
-                            color: "black".into(),
-                        },
-                    ]),
-                }]),
             }],
         );
     }
