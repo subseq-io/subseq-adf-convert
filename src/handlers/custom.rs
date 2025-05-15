@@ -161,10 +161,10 @@ pub(crate) fn media_and_inline_card_start_handler() -> HandlerFn {
                         width,
                         height,
                     },
-                    marks: vec![MediaMark::Link(LinkMark {
+                    marks: Some(vec![MediaMark::Link(LinkMark {
                         href,
                         ..Default::default()
-                    })],
+                    })]),
                 };
 
                 ADFBuilder::push_media_node_to_parent(state, media_node);

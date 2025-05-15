@@ -1,9 +1,12 @@
 use std::borrow::Cow;
 use std::fmt::Write;
 
-use crate::html_builder::*;
+use urlencoding::encode;
 
-use crate::adf::adf_types::{AdfMark, AdfNode, MediaMark, MediaNode, Subsup, TaskItemState};
+use crate::adf::adf_types::{
+    AdfMark, AdfNode, DataSourceView, MediaMark, MediaNode, Subsup, TaskItemState,
+};
+use crate::html_builder::*;
 
 pub fn adf_to_html(adf: Vec<AdfNode>) -> String {
     let mut buffer = Buffer::new();
@@ -14,10 +17,15 @@ pub fn adf_to_html(adf: Vec<AdfNode>) -> String {
 
 fn media_adf_to_html(mut node: Node, media: Vec<MediaNode>) {
     for media_node in media {
-        let link = media_node.marks.iter().find_map(|mark| match mark {
-            MediaMark::Link(link) => Some(link),
-            _ => None,
-        });
+        let link = media_node
+            .marks
+            .map(|marks| {
+                marks.iter().find_map(|mark| match mark {
+                    MediaMark::Link(link) => Some(link.clone()),
+                    _ => None,
+                })
+            })
+            .flatten();
 
         if let Some(link) = link {
             match media_node.attrs.type_.as_str() {
@@ -78,6 +86,32 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
             AdfNode::Blockquote { content } => {
                 let blockquote = node.blockquote();
                 inner_adf_to_html(blockquote, content);
+            }
+            AdfNode::BlockCard { attrs } => {
+                let mut block_card = node
+                    .child(Cow::Borrowed("adf-block-card"))
+                    .attr(&format!("data-block-card=\"{}\"", attrs.url));
+                let jql_attr = encode(&attrs.datasource.parameters.jql);
+                let mut datasource = block_card
+                    .child(Cow::Borrowed("adf-block-card-data-source"))
+                    .attr(&format!("data-source=\"{}\"", attrs.datasource.id))
+                    .attr(&format!(
+                        "data-cloud-id=\"{}\"",
+                        attrs.datasource.parameters.cloud_id
+                    ))
+                    .attr(&format!("data-jql=\"{}\"", jql_attr));
+                for view in attrs.datasource.views {
+                    match view {
+                        DataSourceView::Table(properties) => {
+                            let mut table = datasource
+                                .child(Cow::Borrowed("adf-block-card-view"))
+                                .attr(&format!("data-type=\"table\""));
+                            for (i, column) in properties.columns.into_iter().enumerate() {
+                                table = table.attr(&format!("data-key-{}=\"{}\"", i, column.key));
+                            }
+                        }
+                    }
+                }
             }
             AdfNode::BulletList { content } => {
                 let list = node.ul();

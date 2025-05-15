@@ -156,6 +156,9 @@ fn create_converter() -> HtmlToMarkdown {
                 "adf-media-group",
                 "adf-decision-item",
                 "adf-local-data",
+                "adf-block-card",
+                "adf-block-card-data-source",
+                "adf-block-card-view",
             ],
             |element: Element| {
                 let attrs = element

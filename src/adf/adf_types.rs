@@ -9,6 +9,9 @@ pub enum AdfNode {
         content: Vec<AdfNode>,
         version: i32,
     },
+    BlockCard {
+        attrs: BlockCardAttrs,
+    },
     Blockquote {
         content: Vec<AdfNode>,
     },
@@ -375,7 +378,7 @@ pub struct MediaNode {
     #[serde(rename = "type")]
     pub media_type: String,
     pub attrs: MediaAttrs,
-    pub marks: Vec<MediaMark>,
+    pub marks: Option<Vec<MediaMark>>,
 }
 
 #[derive(Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
@@ -485,4 +488,44 @@ pub struct DecisionItemAttrs {
 #[serde(rename_all = "camelCase")]
 pub struct LocalId {
     pub local_id: String,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockCardAttrs {
+    pub datasource: DataSourceAttrs,
+    pub url: String,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DataSourceAttrs {
+    pub id: String,
+    pub parameters: DataSourceParameters,
+    pub views: Vec<DataSourceView>,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DataSourceParameters {
+    pub cloud_id: String,
+    pub jql: String,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug)]
+#[serde(tag = "type", content = "properties", rename_all = "camelCase")]
+pub enum DataSourceView {
+    Table(TableViewProperties),
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TableViewProperties {
+    pub columns: Vec<TableColumn>,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TableColumn {
+    pub key: String,
 }
