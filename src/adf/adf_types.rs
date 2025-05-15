@@ -124,8 +124,6 @@ impl AdfNode {
         if let Self::Doc { content, .. } = self {
             return content.clone();
         }
-
-        eprintln!("unwrap_doc called on non-doc node");
         Vec::new()
     }
 

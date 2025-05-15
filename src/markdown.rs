@@ -200,7 +200,6 @@ pub fn markdown_to_adf(markdown: &str) -> Option<AdfNode> {
         })
         .unwrap_or_default();
     let sanitized = normalize_html(&html);
-    eprintln!("HTML: {}", sanitized);
     Some(html_to_adf(&sanitized))
 }
 
