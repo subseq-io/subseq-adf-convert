@@ -69,9 +69,9 @@ roundtripping:
 ## Usage Example
 
 ```rust
-use your_crate::html_to_adf::html_to_adf;
-use your_crate::adf_to_html::adf_to_html;
-use your_crate::markdown::{adf_to_markdown, markdown_to_adf};
+use subseq_adf_convert::html_to_adf::html_to_adf;
+use subseq_adf_convert::adf_to_html::adf_to_html;
+use subseq_adf_convert::markdown::{adf_to_markdown, markdown_to_adf};
 
 // ADF -> HTML -> Markdown -> HTML -> ADF
 let adf = my_custom_adf();
