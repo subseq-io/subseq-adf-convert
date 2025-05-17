@@ -1,7 +1,7 @@
 use super::{ADFBuilderState, BlockContext, Element};
 use crate::{adf::adf_types::TaskItemState, html_to_adf::HandlerFn};
 
-pub(crate) fn input_start_handler() -> HandlerFn {
+pub(crate) fn task_item_start_handler() -> HandlerFn {
     Box::new(|state: &mut ADFBuilderState, element: Element| {
         let stack_back = state.stack.pop();
         match stack_back {

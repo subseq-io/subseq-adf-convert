@@ -157,6 +157,7 @@ fn create_converter() -> HtmlToMarkdown {
                 "adf-media-single",
                 "adf-media-group",
                 "adf-decision-item",
+                "adf-task-item",
                 "adf-local-data",
                 "adf-block-card",
                 "adf-block-card-data-source",

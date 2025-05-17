@@ -15,8 +15,9 @@ pub fn adf_to_html(adf: Vec<AdfNode>) -> String {
     buffer.finish()
 }
 
-fn media_adf_to_html(mut node: Node, media: Vec<MediaNode>) {
-    for media_node in media {
+fn media_adf_to_html(mut node: Node, media_entries: Vec<MediaNode>) {
+    eprintln!("media_adf_to_html: {:?}", media_entries);
+    for media_node in media_entries {
         let link = media_node
             .marks
             .map(|marks| {
@@ -27,55 +28,55 @@ fn media_adf_to_html(mut node: Node, media: Vec<MediaNode>) {
             })
             .flatten();
 
-        if let Some(link) = link {
-            match media_node.attrs.type_.as_str() {
-                "file" => {
-                    let mut attrs = vec![];
+        match media_node.attrs.type_.as_str() {
+            "file" => {
+                let mut attrs = vec![];
+                if let Some(link) = &link {
                     attrs.push(format!("src=\"{}\"", link.href));
-
-                    attrs.push(format!(
-                        "data-collection=\"{}\"",
-                        media_node.attrs.collection
-                    ));
-                    attrs.push(format!("data-media-id=\"{}\"", media_node.attrs.id));
-                    if let Some(alt) = &media_node.attrs.alt {
-                        attrs.push(format!("alt=\"{}\"", alt));
-                    }
-
-                    let mut styles = vec![];
-                    if let Some(width) = media_node.attrs.width {
-                        styles.push(format!("width: {}px", width));
-                    }
-                    if let Some(height) = media_node.attrs.height {
-                        styles.push(format!("height: {}px", height));
-                    }
-                    if !styles.is_empty() {
-                        attrs.push(format!("style=\"{}\"", &styles.join("; ")));
-                    }
-                    let attrs_str = attrs
-                        .iter()
-                        .map(|a| a.as_str())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    node.img().attr(&attrs_str);
                 }
-                "link" => {
+                attrs.push(format!("id=\"{}\"", media_node.attrs.id));
+
+                attrs.push(format!(
+                    "data-collection=\"{}\"",
+                    media_node.attrs.collection
+                ));
+                attrs.push(format!("data-media-id=\"{}\"", media_node.attrs.id));
+                if let Some(alt) = &media_node.attrs.alt {
+                    attrs.push(format!("alt=\"{}\"", alt));
+                }
+
+                let mut styles = vec![];
+                if let Some(width) = media_node.attrs.width {
+                    styles.push(format!("width: {}px", width));
+                }
+                if let Some(height) = media_node.attrs.height {
+                    styles.push(format!("height: {}px", height));
+                }
+                if !styles.is_empty() {
+                    attrs.push(format!("style=\"{}\"", &styles.join("; ")));
+                }
+                let attrs_str = attrs
+                    .iter()
+                    .map(|a| a.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                node.img().attr(&attrs_str);
+            }
+            "link" => {
+                if let Some(link) = link {
                     let mut a = node.a().attr(&format!("href=\"{}\"", link.href));
                     if let Some(title) = link.title.as_ref() {
-                        writeln!(a, "{}", title).ok();
+                        write!(a, "{}", title).ok();
                     } else {
-                        writeln!(a, "{}", link.href).ok();
+                        write!(a, "{}", link.href).ok();
                     }
-                }
-                other => {
-                    tracing::warn!("Unknown media type: {}", other);
+                } else {
+                    tracing::warn!("Media link is missing");
                 }
             }
-        } else {
-            tracing::warn!(
-                "Media node of type {} missing Link mark, skipping",
-                media_node.attrs.type_
-            );
+            other => {
+                tracing::warn!("Unknown media type: {}", other);
+            }
         }
     }
 }
@@ -135,7 +136,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     .unwrap_or_default()
                     .to_rfc3339();
                 let mut date = node.time().attr(&format!("datetime=\"{}\"", date_str));
-                writeln!(date, "{}", date_str).ok();
+                write!(date, "{}", date_str).ok();
             }
             AdfNode::Doc { content, .. } => {
                 let doc = node.div();
@@ -146,15 +147,15 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     .child(Cow::Borrowed("adf-emoji"))
                     .attr(&format!("aria-alt=\"{}\"", attrs.short_name));
                 if let Some(text) = &attrs.text {
-                    writeln!(emoji, "{}", text).ok();
+                    write!(emoji, "{}", text).ok();
                 } else {
-                    writeln!(emoji, "{}", attrs.short_name).ok();
+                    write!(emoji, "{}", attrs.short_name).ok();
                 }
             }
             AdfNode::Expand { content, attrs } => {
                 let mut expand = node.details();
                 if let Some(title) = attrs.title.as_ref() {
-                    writeln!(expand.summary(), "{}", title).ok();
+                    write!(expand.summary(), "{}", title).ok();
                 }
                 inner_adf_to_html(expand, content);
             }
@@ -183,7 +184,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                         .attr("data-inline-card=\"true\"")
                         .attr("target=\"_blank\"")
                         .attr("rel=\"noopener noreferrer\"");
-                    writeln!(a_tag, "External Link").ok();
+                    write!(a_tag, "External Link").ok();
                 }
             }
             AdfNode::ListItem { content } => {
@@ -212,12 +213,12 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     mention = mention.attr(&format!("data-access-level=\"{}\"", access_level));
                 }
                 if let Some(text) = &attrs.text {
-                    writeln!(mention, "{}", text).ok();
+                    write!(mention, "{}", text).ok();
                 }
             }
             AdfNode::NestedExpand { content, attrs } => {
                 let mut expand = node.details().attr("data-nested=\"true\"");
-                writeln!(expand.summary(), "{}", attrs.title).ok();
+                write!(expand.summary(), "{}", attrs.title).ok();
                 inner_adf_to_html(expand, content);
             }
             AdfNode::OrderedList { content, .. } => {
@@ -243,7 +244,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     attrs.color,
                     attrs.local_id.unwrap_or_default()
                 ));
-                writeln!(status, "{}", attrs.text).ok();
+                write!(status, "{}", attrs.text).ok();
             }
             AdfNode::Table { content, .. } => {
                 let mut table = node.table();
@@ -333,7 +334,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                         };
                         apply_marks(&mut wrapped_node, rest, text)
                     } else {
-                        writeln!(node, "{}", text)
+                        write!(node, "{}", text)
                     }
                 }
                 apply_marks(&mut node, &marks.unwrap_or_default(), &text).ok();
@@ -354,7 +355,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 };
                 let local_id = attrs.local_id;
                 task_item
-                    .input()
+                    .child(Cow::Borrowed("adf-task-item"))
                     .attr(&format!("id=\"{}\" type=checkbox {}", local_id, checked));
                 inner_adf_to_html(task_item, content);
             }

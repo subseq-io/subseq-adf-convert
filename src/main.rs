@@ -46,8 +46,9 @@ fn main() {
         std::process::exit(1);
     });
     let html = adf_to_html(vec![adf]);
+    println!("\n--- HTML ---\n{}\n---      ---\n", html);
     let markdown = html_to_markdown(html);
-    println!("\n---\n{}\n---\n", markdown);
+    println!("\n--- MARKDOWN ---\n{}\n---          ---\n", markdown);
 
     let adf = markdown_to_adf(&markdown);
     let adf = adf.unwrap_or_else(|| {

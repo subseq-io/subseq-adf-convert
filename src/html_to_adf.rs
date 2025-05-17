@@ -58,8 +58,6 @@ impl ADFBuilder {
                 stack: vec![BlockContext::Document(vec![])],
                 mark_stack: vec![],
                 current_text: String::new(),
-                preformatted: false,
-                heavy_trim: false,
                 custom_block_id: None,
                 custom_block_tag: None,
             }),
@@ -141,7 +139,7 @@ impl ADFBuilder {
 
         this.insert_end_handler("summary", summary_end_handler());
 
-        this.insert_start_handler("input", input_start_handler());
+        this.insert_start_handler("adf-task-item", task_item_start_handler());
         this.insert_start_handler("adf-local-data", local_data_start_handler());
 
         this.insert_start_handler("adf-status", status_start_handler());
@@ -224,14 +222,6 @@ impl ADFBuilder {
 
             if trim_for_blocks {
                 text = clean_surrounding_text(&text).to_string();
-            }
-
-            if !state.preformatted {
-                text = text.trim_end_matches('\n').to_string();
-            }
-
-            if state.heavy_trim {
-                text = text.trim().to_string();
             }
 
             if text.trim().is_empty() {

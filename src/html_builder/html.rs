@@ -710,7 +710,7 @@ impl<'a> Html5 for Node<'a> {
 
     /// Defines preformatted text
     fn pre(&mut self) -> Node {
-        self.pre_child(Cow::Borrowed("pre"))
+        self.child(Cow::Borrowed("pre"))
     }
 
     /// Represents the progress of a task
@@ -830,7 +830,7 @@ impl<'a> Html5 for Node<'a> {
 
     /// Defines a multiline input control (text area)
     fn textarea(&mut self) -> Node {
-        self.pre_child(Cow::Borrowed("textarea"))
+        self.child(Cow::Borrowed("textarea"))
     }
 
     /// Groups the footer content in a table

@@ -133,12 +133,6 @@ pub struct Buffer {
 /// with [`child()`][Node::child], and write text into the node using the
 /// `Write` impl.
 ///
-/// ## Preformatted text
-///
-/// Inside of `pre` and `code` tags, whitespace is preserved.  This is done by
-/// setting the `is_preformatted` flag on the node.  This flag is set automatically
-/// when creating a `pre` or `textarea` node.
-///
 /// ## Escaping
 ///
 /// Text written into a node using its `Write` impl is transformed to make it
@@ -150,7 +144,6 @@ pub struct Node<'a> {
     depth: usize,
     ctx: Weak<Mutex<Ctx>>,
     escaping: Escaping,
-    is_preformatted: bool,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
@@ -180,7 +173,7 @@ pub struct Comment<'a> {
 #[derive(Default)]
 struct Ctx {
     wtr: String,
-    stack: Vec<(Cow<'static, str>, bool, bool)>,
+    stack: Vec<(Cow<'static, str>, bool)>,
     tag_open: Option<&'static str>,
 }
 
@@ -205,7 +198,6 @@ impl Default for Buffer {
         let node = Node {
             depth: 0,
             ctx: Arc::downgrade(&ctx),
-            is_preformatted: false,
             escaping: Escaping::Normal,
             _phantom: std::marker::PhantomData,
         };
@@ -237,81 +229,41 @@ impl Ctx {
         self.close_unclosed();
         let to_pop = self.stack.len() - depth;
         for _ in 0..to_pop {
-            if let Some((tag, is_preformatted, is_self_closing)) = self.stack.pop() {
+            if let Some((tag, is_self_closing)) = self.stack.pop() {
                 if !is_self_closing {
-                    if is_preformatted {
-                        write!(self.wtr, "{:>w$}/{}>", "<", tag, w = 0).unwrap();
-                    } else {
-                        writeln!(self.wtr, "{:>w$}/{}>", "<", tag, w = self.stack.len() + 1)
-                            .unwrap();
-                    };
+                    write!(self.wtr, "</{}>", tag).unwrap();
                 }
             }
         }
     }
 
-    fn open(
-        &mut self,
-        tag: Cow<'static, str>,
-        depth: usize,
-        is_preformatted: bool,
-        is_self_closing: bool,
-    ) {
+    fn open(&mut self, tag: Cow<'static, str>, depth: usize, is_self_closing: bool) {
         self.close_deeper_than(depth);
-        let depth = if is_preformatted { 0 } else { depth + 1 };
-        write!(self.wtr, "{:>w$}{}", "<", &tag, w = depth).unwrap();
+        write!(self.wtr, "<{}", &tag).unwrap();
         if is_self_closing {
-            if is_preformatted {
-                self.tag_open = Some(" />");
-            } else {
-                self.tag_open = Some(" />\n");
-            }
+            self.tag_open = Some(" />");
         } else {
-            if is_preformatted {
-                self.tag_open = Some(">");
-            } else {
-                self.tag_open = Some(">\n");
-            }
+            self.tag_open = Some(">");
         }
-        self.stack.push((tag, is_preformatted, is_self_closing));
+        self.stack.push((tag, is_self_closing));
     }
 
-    fn open_comment(&mut self, depth: usize, is_preformatted: bool) {
+    fn open_comment(&mut self, depth: usize) {
         self.close_deeper_than(depth);
-        let depth = if is_preformatted { 0 } else { depth + 1 };
-        write!(self.wtr, "{:>w$}!-- ", "<", w = depth).unwrap();
-        self.tag_open = Some(" -->\n");
+        write!(self.wtr, "<!-- ").unwrap();
+        self.tag_open = Some(" -->");
     }
 }
 
 impl<'a> Node<'a> {
-    pub fn is_preformatted(&self) -> bool {
-        self.is_preformatted
-    }
-
     /// Create a new node, inheriting from the parent node.
     pub fn child<'b>(&'b mut self, tag: Cow<'static, str>) -> Node<'b> {
         let ctx = self.ctx.upgrade().unwrap();
         let mut ctx = ctx.lock().unwrap();
-        ctx.open(tag, self.depth, self.is_preformatted, false);
+        ctx.open(tag, self.depth, false);
         Node {
             depth: self.depth + 1,
             ctx: self.ctx.clone(),
-            is_preformatted: self.is_preformatted,
-            escaping: Escaping::Normal,
-            _phantom: std::marker::PhantomData,
-        }
-    }
-
-    /// Create a preformatted child node
-    pub fn pre_child<'b>(&'b mut self, tag: Cow<'static, str>) -> Node<'b> {
-        let ctx = self.ctx.upgrade().unwrap();
-        let mut ctx = ctx.lock().unwrap();
-        ctx.open(tag, self.depth, true, false);
-        Node {
-            depth: self.depth + 1,
-            ctx: self.ctx.clone(),
-            is_preformatted: true,
             escaping: Escaping::Normal,
             _phantom: std::marker::PhantomData,
         }
@@ -321,7 +273,7 @@ impl<'a> Node<'a> {
     pub fn void_child<'b>(&'b mut self, tag: Cow<'static, str>) -> Void<'b> {
         let ctx = self.ctx.upgrade().unwrap();
         let mut ctx = ctx.lock().unwrap();
-        ctx.open(tag, self.depth, self.is_preformatted, true);
+        ctx.open(tag, self.depth, true);
         Void {
             ctx: self.ctx.clone(),
             _phantom: std::marker::PhantomData,
@@ -331,7 +283,7 @@ impl<'a> Node<'a> {
     pub fn comment<'b>(&'b mut self) -> Comment<'b> {
         let ctx = self.ctx.upgrade().unwrap();
         let mut ctx = ctx.lock().unwrap();
-        ctx.open_comment(self.depth, self.is_preformatted);
+        ctx.open_comment(self.depth);
         Comment {
             ctx: self.ctx.clone(),
             _phantom: std::marker::PhantomData,
