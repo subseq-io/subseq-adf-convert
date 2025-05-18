@@ -225,8 +225,11 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 let list = node.ol();
                 inner_adf_to_html(list, content);
             }
-            AdfNode::Panel { content, .. } => {
-                let panel = node.figure().attr("data-panel-type=\"info\"");
+            AdfNode::Panel { content, attrs } => {
+                let panel_type = attrs.panel_type.as_str();
+                let panel = node
+                    .figure()
+                    .attr(&format!("data-panel-type=\"{panel_type}\""));
                 inner_adf_to_html(panel, content);
             }
             AdfNode::Paragraph { content } => {
@@ -947,7 +950,7 @@ mod tests {
                 },
                 AdfNode::Panel {
                     attrs: PanelAttrs {
-                        panel_type: "info".into(),
+                        panel_type: "warning".into(),
                     },
                     content: vec![AdfNode::Paragraph {
                         content: Some(vec![AdfNode::Text {
@@ -1252,7 +1255,7 @@ mod tests {
                     },
                     AdfNode::CodeBlock {
                         content: Some(vec![AdfNode::Text {
-                            text: "let x = 10;".into(),
+                            text: "let x = 10;\n".into(),
                             marks: None,
                         }]),
                         attrs: None,

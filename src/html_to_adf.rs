@@ -263,9 +263,6 @@ impl ADFBuilder {
                         nodes.push(node);
                     }
                     BlockContext::CodeBlock(lines) => {
-                        if let Some(stripped) = text.strip_suffix('\n') {
-                            text = stripped.to_string();
-                        }
                         lines.push(text);
                     }
                     _ => {}
