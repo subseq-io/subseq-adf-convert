@@ -413,8 +413,9 @@ impl ADFBuilder {
                 parent => panic!("Invalid parent for PendingList: {parent:?}"),
             },
             block => {
+                let stack = &state.stack;
                 panic!(
-                    "{block:?} closed incorrectly; must use block-specific close method: {parent:?}"
+                    "{block:?} closed incorrectly; must use block-specific close method: {stack:?}"
                 );
             }
         }

@@ -35,16 +35,26 @@ impl ADFBuilder {
                 false
             });
             if has_list_item_parent {
-                state.stack.pop(); // Replace the ListItem with the DecisionItem
+                while let Some(p) = state.stack.pop() {
+                    if let BlockContext::ListItem(_) = p {
+                        break;
+                    }
+                }
                 state
                     .stack
                     .push(BlockContext::DecisionItem(nodes, local_id));
             } else {
                 // We are closing a decision item outside of a list item
-                panic!("DecisionItem closed incorrectly; must use block-specific close method");
+                panic!(
+                    "DecisionItem closed incorrectly; must use block-specific close method {:?}",
+                    state.stack
+                );
             }
         } else {
-            panic!("DecisionItem closed incorrectly; must use block-specific close method");
+            panic!(
+                "DecisionItem closed incorrectly; must use block-specific close method {:?}",
+                state.stack
+            );
         }
     }
 }
