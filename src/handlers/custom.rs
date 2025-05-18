@@ -427,6 +427,21 @@ pub(crate) fn mention_end_handler() -> HandlerFn {
         {
             let text = state.current_text.trim().to_string();
             state.current_text.clear();
+            let user_type = serde_json::from_str(
+                &attrs
+                    .get("data-user-type")
+                    .map(|s| format!("\"{}\"", s.as_str()))
+                    .unwrap_or("\"DEFAULT\"".to_string()),
+            )
+            .unwrap_or_default();
+
+            let access_level = serde_json::from_str(
+                &attrs
+                    .get("data-access-level")
+                    .map(|s| format!("\"{}\"", s.as_str()))
+                    .unwrap_or("\"NONE\"".to_string()),
+            )
+            .unwrap_or_default();
 
             ADFBuilder::push_block_to_parent(
                 state,
@@ -434,8 +449,8 @@ pub(crate) fn mention_end_handler() -> HandlerFn {
                     attrs: crate::adf::adf_types::MentionAttrs {
                         id: attrs.get("data-mention-id").cloned().unwrap_or_default(),
                         text: if text.is_empty() { None } else { Some(text) },
-                        user_type: attrs.get("data-user-type").cloned(),
-                        access_level: attrs.get("data-access-level").cloned(),
+                        user_type,
+                        access_level,
                     },
                 },
             );

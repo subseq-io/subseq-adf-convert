@@ -200,12 +200,14 @@ pub fn markdown_to_adf(markdown: &str) -> Option<AdfNode> {
             ..Default::default()
         },
     };
+    eprintln!("Parsing markdown: {}", markdown);
     let html = markdown_to_html(markdown, &options)
         .map_err(|err| {
             tracing::warn!("Failed to convert markdown to HTML: {}", err);
         })
         .unwrap_or_default();
     let sanitized = normalize_html(&html);
+    eprintln!("Parsing html: {}", sanitized);
     Some(html_to_adf(&sanitized))
 }
 

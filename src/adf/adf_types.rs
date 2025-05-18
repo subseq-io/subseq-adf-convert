@@ -403,12 +403,30 @@ pub enum MediaMark {
 }
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum AccessLevel {
+    #[default]
+    None,
+    Site,
+    Application,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum UserType {
+    #[default]
+    Default,
+    Special,
+    App,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MentionAttrs {
-    pub access_level: Option<String>,
+    pub access_level: AccessLevel,
     pub id: String,
     pub text: Option<String>,
-    pub user_type: Option<String>,
+    pub user_type: UserType,
 }
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]

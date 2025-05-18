@@ -206,12 +206,14 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 let mut mention = node
                     .child(Cow::Borrowed("adf-mention"))
                     .attr(&format!("data-mention-id=\"{}\"", attrs.id));
-                if let Some(user_type) = &attrs.user_type {
-                    mention = mention.attr(&format!("data-user-type=\"{}\"", user_type));
-                }
-                if let Some(access_level) = &attrs.access_level {
-                    mention = mention.attr(&format!("data-access-level=\"{}\"", access_level));
-                }
+                mention = mention.attr(&format!(
+                    "data-user-type={}",
+                    serde_json::to_string(&attrs.user_type).expect("Failed to serialize")
+                ));
+                mention = mention.attr(&format!(
+                    "data-access-level={}",
+                    serde_json::to_string(&attrs.access_level).expect("Failed to serialize")
+                ));
                 if let Some(text) = &attrs.text {
                     write!(mention, "{}", text).ok();
                 }
@@ -640,8 +642,8 @@ mod tests {
                     attrs: MentionAttrs {
                         id: "user-1".into(),
                         text: Some("Mentioned User".into()),
-                        access_level: Some("admin".into()),
-                        user_type: Some("app".into()),
+                        access_level: AccessLevel::Site,
+                        user_type: UserType::App,
                     },
                 }]),
             }],
@@ -1031,8 +1033,8 @@ mod tests {
                         attrs: MentionAttrs {
                             id: "user-1".into(),
                             text: Some("User".into()),
-                            access_level: None,
-                            user_type: None,
+                            access_level: AccessLevel::None,
+                            user_type: UserType::Default,
                         },
                     },
                     AdfNode::Text {
