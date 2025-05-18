@@ -141,7 +141,6 @@ impl ADFBuilder {
 
         this.insert_start_handler("adf-task-item", task_item_start_handler());
         this.insert_start_handler("adf-decision-item", decision_start_handler());
-        this.insert_end_handler("adf-decision-item", decision_end_handler());
         this.insert_start_handler("adf-local-data", local_data_start_handler());
 
         this.insert_start_handler("adf-status", status_start_handler());
