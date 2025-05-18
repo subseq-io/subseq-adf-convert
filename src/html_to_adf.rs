@@ -140,6 +140,7 @@ impl ADFBuilder {
         this.insert_end_handler("summary", summary_end_handler());
 
         this.insert_start_handler("adf-task-item", task_item_start_handler());
+        this.insert_start_handler("adf-decision-item", decision_start_handler());
         this.insert_start_handler("adf-local-data", local_data_start_handler());
 
         this.insert_start_handler("adf-status", status_start_handler());
@@ -150,9 +151,6 @@ impl ADFBuilder {
 
         this.insert_start_handler("adf-mention", mention_start_handler());
         this.insert_end_handler("adf-mention", mention_end_handler());
-
-        this.insert_start_handler("adf-decision-item", decision_start_handler());
-        this.insert_end_handler("adf-decision-item", decision_end_handler());
 
         this.insert_start_handler("adf-media-single", media_single_start_handler());
         this.insert_end_handler("adf-media-single", media_single_end_handler());
@@ -968,6 +966,38 @@ mod tests {
                         ],
                     },
                 ],
+            }],
+        );
+    }
+
+    #[test]
+    fn test_decision_item_parsing() {
+        let adf = html_to_adf(
+            r#"
+            <adf-local-data id="54321" data-tag="decision-list"></adf-local-data>
+            <ul>
+                <li>
+                    <adf-decision-item id="12345">Decision item text</adf-decision-item>
+                </li>
+            </ul>
+            "#,
+        );
+        assert_content_eq(
+            adf,
+            vec![AdfNode::DecisionList {
+                content: vec![AdfNode::DecisionItem {
+                    content: vec![AdfNode::Text {
+                        text: "Decision item text".into(),
+                        marks: None,
+                    }],
+                    attrs: DecisionItemAttrs {
+                        local_id: "12345".to_string(),
+                        state: "DECIDED".to_string(),
+                    },
+                }],
+                attrs: LocalId {
+                    local_id: "54321".to_string(),
+                },
             }],
         );
     }
