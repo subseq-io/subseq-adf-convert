@@ -4,17 +4,20 @@ use std::collections::HashMap;
 mod base;
 mod custom;
 mod decisions;
+mod media;
 mod table;
 mod tasks;
 
 pub(crate) use base::*;
 pub(crate) use custom::*;
 pub(crate) use decisions::*;
+pub(crate) use media::*;
 pub(crate) use table::*;
 pub(crate) use tasks::*;
 
 use crate::adf::adf_types::{AdfMark, AdfNode, LocalId, MediaNode, TaskItemState};
 
+#[derive(Debug)]
 pub struct Element {
     pub tag: String,
     pub attrs: Vec<Attribute>,

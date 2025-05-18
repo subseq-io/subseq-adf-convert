@@ -1,6 +1,5 @@
-use crate::html_to_adf::HandlerFn;
-
 use super::{ADFBuilderState, BlockContext, Element};
+use crate::html_to_adf::HandlerFn;
 
 pub(crate) fn decision_start_handler() -> HandlerFn {
     Box::new(|state: &mut ADFBuilderState, element: Element| {
@@ -13,15 +12,15 @@ pub(crate) fn decision_start_handler() -> HandlerFn {
             return false;
         }
 
-        let inner = loop{
+        let inner = loop {
             let item = state.stack.pop();
             match item {
                 Some(BlockContext::ListItem(inner)) => {
                     break inner;
-                },
+                }
                 None => {
                     panic!("No list item found in stack");
-                },
+                }
                 _ => {
                     // continue
                 }

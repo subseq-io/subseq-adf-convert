@@ -141,6 +141,7 @@ impl ADFBuilder {
 
         this.insert_start_handler("adf-task-item", task_item_start_handler());
         this.insert_start_handler("adf-decision-item", decision_start_handler());
+        this.insert_end_handler("adf-decision-item", decision_end_handler());
         this.insert_start_handler("adf-local-data", local_data_start_handler());
 
         this.insert_start_handler("adf-status", status_start_handler());
@@ -452,9 +453,11 @@ impl ADFBuilder {
                         state: "DECIDED".to_string(),
                     },
                 });
+            } else {
+                panic!("DecisionItem closed without PendingList parent");
             }
         } else {
-            panic!("Invalid context for ListItem close");
+            panic!("Invalid context for ListItem close {:?}", stack_item);
         }
     }
 
@@ -636,7 +639,10 @@ pub fn html_to_adf(input: &str) -> AdfNode {
 mod tests {
     use super::*;
 
-    use crate::adf::adf_types::{AdfNode, HeadingAttrs, LinkMark, Subsup};
+    use crate::adf::adf_types::{
+        AdfNode, HeadingAttrs, LinkMark, MediaAttrs, MediaDataType, MediaNode, MediaSingleAttrs,
+        MediaType, Subsup,
+    };
 
     fn assert_content_eq(adf: AdfNode, expected: Vec<AdfNode>) {
         assert_eq!(
@@ -971,13 +977,53 @@ mod tests {
     }
 
     #[test]
+    fn test_media_parsing() {
+        let adf = html_to_adf(
+            r#"
+            <p>
+                <adf-media-single data-layout="align-start">
+                    <img
+                        data-collection=""
+                        data-media-id="76add7bf-0485-4fe8-88c2-30dcad78e7b5"
+                        alt="pants.png"
+                        style="width: 659px; height: 291px">
+                    </img>
+                </adf-media-single>
+            </p>"#,
+        );
+        assert_content_eq(
+            adf,
+            vec![AdfNode::MediaSingle {
+                content: vec![MediaNode {
+                    media_type: MediaType::Media,
+                    attrs: MediaAttrs {
+                        alt: Some("pants.png".to_string()),
+                        collection: "".to_string(),
+                        height: Some(291),
+                        id: "76add7bf-0485-4fe8-88c2-30dcad78e7b5".to_string(),
+                        type_: MediaDataType::File,
+                        width: Some(659),
+                    },
+                    marks: None,
+                }],
+                attrs: MediaSingleAttrs {
+                    layout: "align-start".to_string(),
+                },
+            }],
+        );
+    }
+
+    #[test]
     fn test_decision_item_parsing() {
         let adf = html_to_adf(
             r#"
-            <adf-local-data id="54321" data-tag="decision-list"></adf-local-data>
+            <p><adf-local-data data-tag="decision-list" id="6e80893d-7501-409d-9cd9-d2f5366ba665"></adf-local-data></p>
             <ul>
                 <li>
-                    <adf-decision-item id="12345">Decision item text</adf-decision-item>
+                    <p><adf-decision-item id="f041c6cd-eb80-47ec-8cba-2e6d13d726de">Decision?</adf-decision-item></p>
+                </li>
+                <li>
+                    <p><adf-decision-item id="d34c6e8f-fc4b-4368-bb3c-794b29b6190b">Do it</adf-decision-item></p>
                 </li>
             </ul>
             "#,
@@ -985,18 +1031,30 @@ mod tests {
         assert_content_eq(
             adf,
             vec![AdfNode::DecisionList {
-                content: vec![AdfNode::DecisionItem {
-                    content: vec![AdfNode::Text {
-                        text: "Decision item text".into(),
-                        marks: None,
-                    }],
-                    attrs: DecisionItemAttrs {
-                        local_id: "12345".to_string(),
-                        state: "DECIDED".to_string(),
+                content: vec![
+                    AdfNode::DecisionItem {
+                        content: vec![AdfNode::Text {
+                            text: "Decision?".into(),
+                            marks: None,
+                        }],
+                        attrs: DecisionItemAttrs {
+                            local_id: "f041c6cd-eb80-47ec-8cba-2e6d13d726de".to_string(),
+                            state: "DECIDED".to_string(),
+                        },
                     },
-                }],
+                    AdfNode::DecisionItem {
+                        content: vec![AdfNode::Text {
+                            text: "Do it".into(),
+                            marks: None,
+                        }],
+                        attrs: DecisionItemAttrs {
+                            local_id: "d34c6e8f-fc4b-4368-bb3c-794b29b6190b".to_string(),
+                            state: "DECIDED".to_string(),
+                        },
+                    },
+                ],
                 attrs: LocalId {
-                    local_id: "54321".to_string(),
+                    local_id: "6e80893d-7501-409d-9cd9-d2f5366ba665".to_string(),
                 },
             }],
         );

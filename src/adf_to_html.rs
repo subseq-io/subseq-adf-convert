@@ -4,7 +4,7 @@ use std::fmt::Write;
 use urlencoding::encode;
 
 use crate::adf::adf_types::{
-    AdfMark, AdfNode, DataSourceView, MediaMark, MediaNode, Subsup, TaskItemState,
+    AdfMark, AdfNode, DataSourceView, MediaDataType, MediaMark, MediaNode, Subsup, TaskItemState,
 };
 use crate::html_builder::*;
 
@@ -16,7 +16,6 @@ pub fn adf_to_html(adf: Vec<AdfNode>) -> String {
 }
 
 fn media_adf_to_html(mut node: Node, media_entries: Vec<MediaNode>) {
-    eprintln!("media_adf_to_html: {:?}", media_entries);
     for media_node in media_entries {
         let link = media_node
             .marks
@@ -28,8 +27,8 @@ fn media_adf_to_html(mut node: Node, media_entries: Vec<MediaNode>) {
             })
             .flatten();
 
-        match media_node.attrs.type_.as_str() {
-            "file" => {
+        match media_node.attrs.type_ {
+            MediaDataType::File => {
                 let mut attrs = vec![];
                 if let Some(link) = &link {
                     attrs.push(format!("src=\"{}\"", link.href));
@@ -62,7 +61,7 @@ fn media_adf_to_html(mut node: Node, media_entries: Vec<MediaNode>) {
                     .join(" ");
                 node.img().attr(&attrs_str);
             }
-            "link" => {
+            MediaDataType::Link => {
                 if let Some(link) = link {
                     let mut a = node.a().attr(&format!("href=\"{}\"", link.href));
                     if let Some(title) = link.title.as_ref() {
@@ -73,9 +72,6 @@ fn media_adf_to_html(mut node: Node, media_entries: Vec<MediaNode>) {
                 } else {
                     tracing::warn!("Media link is missing");
                 }
-            }
-            other => {
-                tracing::warn!("Unknown media type: {}", other);
             }
         }
     }
@@ -197,9 +193,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
             }
             AdfNode::MediaSingle { content, attrs } => {
                 let mut media_single = node.child(Cow::Borrowed("adf-media-single"));
-                if let Some(layout) = attrs.as_ref().map(|a| a.layout.as_ref()).flatten() {
-                    media_single = media_single.attr(&format!("data-layout=\"{}\"", layout));
-                }
+                media_single = media_single.attr(&format!("data-layout=\"{}\"", attrs.layout));
                 media_adf_to_html(media_single, content);
             }
             AdfNode::Mention { attrs } => {
@@ -466,19 +460,16 @@ mod tests {
         let adf = AdfNode::Doc {
             content: vec![AdfNode::MediaGroup {
                 content: vec![MediaNode {
-                    media_type: "image".into(),
+                    media_type: MediaType::Media,
                     attrs: MediaAttrs {
                         alt: Some("Image description".into()),
                         height: None,
                         width: None,
                         id: "media-id".into(),
                         collection: "collection".into(),
-                        type_: "file".into(),
+                        type_: MediaDataType::File,
                     },
-                    marks: Some(vec![MediaMark::Link(LinkMark {
-                        href: "https://example.com".into(),
-                        ..Default::default()
-                    })]),
+                    marks: None,
                 }],
             }],
             version: 1,
@@ -491,23 +482,20 @@ mod tests {
     fn test_media_single_roundtrip() {
         let adf = AdfNode::Doc {
             content: vec![AdfNode::MediaSingle {
-                attrs: Some(MediaSingleAttrs {
-                    layout: Some("center".into()),
-                }),
+                attrs: MediaSingleAttrs {
+                    layout: "center".into(),
+                },
                 content: vec![MediaNode {
-                    media_type: "image".into(),
+                    media_type: MediaType::Media,
                     attrs: MediaAttrs {
                         alt: None,
                         height: Some(300),
                         width: Some(300),
                         id: "media-id".into(),
                         collection: "collection".into(),
-                        type_: "file".into(),
+                        type_: MediaDataType::File,
                     },
-                    marks: Some(vec![MediaMark::Link(LinkMark {
-                        href: "https://example.com".into(),
-                        ..Default::default()
-                    })]),
+                    marks: None,
                 }],
             }],
             version: 1,
@@ -981,19 +969,16 @@ mod tests {
                 },
                 AdfNode::MediaGroup {
                     content: vec![MediaNode {
-                        media_type: "image".into(),
+                        media_type: MediaType::Media,
                         attrs: MediaAttrs {
                             alt: Some("Diagram".into()),
                             height: None,
                             width: None,
                             id: "media-id".into(),
                             collection: "collection".into(),
-                            type_: "file".into(),
+                            type_: MediaDataType::File,
                         },
-                        marks: Some(vec![MediaMark::Link(LinkMark {
-                            href: "https://example.com/image".into(),
-                            ..Default::default()
-                        })]),
+                        marks: None,
                     }],
                 },
                 AdfNode::Expand {
@@ -1307,19 +1292,16 @@ mod tests {
                 AdfNode::Rule,
                 AdfNode::MediaGroup {
                     content: vec![MediaNode {
-                        media_type: "image".into(),
+                        media_type: MediaType::Media,
                         attrs: MediaAttrs {
                             alt: Some("Diagram".into()),
                             collection: "collection".into(),
                             height: Some(200),
                             id: "media-1".into(),
-                            type_: "file".into(),
+                            type_: MediaDataType::File,
                             width: Some(300),
                         },
-                        marks: Some(vec![MediaMark::Link(LinkMark {
-                            href: "https://example.com/image".into(),
-                            ..Default::default()
-                        })]),
+                        marks: None,
                     }],
                 },
                 AdfNode::Expand {

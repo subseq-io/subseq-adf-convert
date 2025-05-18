@@ -327,7 +327,9 @@ pub(crate) fn li_end_handler() -> HandlerFn {
 pub(crate) fn p_end_handler() -> HandlerFn {
     Box::new(|state, _| {
         ADFBuilder::flush_text(state);
-        ADFBuilder::close_current_block(state);
+        if let Some(&BlockContext::Paragraph(_)) = state.stack.last() {
+            ADFBuilder::close_current_block(state);
+        }
         true
     })
 }

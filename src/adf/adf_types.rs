@@ -86,8 +86,7 @@ pub enum AdfNode {
         content: Vec<MediaNode>,
     },
     MediaSingle {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        attrs: Option<MediaSingleAttrs>,
+        attrs: MediaSingleAttrs,
         content: Vec<MediaNode>,
     },
     Mention {
@@ -374,9 +373,24 @@ pub struct InlineCardAttrs {
 }
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MediaType {
+    #[default]
+    Media,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MediaDataType {
+    #[default]
+    File,
+    Link,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
 pub struct MediaNode {
     #[serde(rename = "type")]
-    pub media_type: String,
+    pub media_type: MediaType,
     pub attrs: MediaAttrs,
     pub marks: Option<Vec<MediaMark>>,
 }
@@ -390,7 +404,7 @@ pub struct MediaAttrs {
     pub height: Option<u32>,
     pub id: String,
     #[serde(rename = "type")]
-    pub type_: String,
+    pub type_: MediaDataType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<u32>,
 }
@@ -476,8 +490,7 @@ pub struct TableCellAttrs {
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
 pub struct MediaSingleAttrs {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub layout: Option<String>,
+    pub layout: String,
 }
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
