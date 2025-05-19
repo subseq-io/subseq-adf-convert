@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use super::{ADFBuilderState, BlockContext, CustomBlockType, Element, TableBlockType};
+use super::{ADFBuilderState, BlockContext, CustomBlockType, Element};
 use crate::{
-    adf::adf_types::{AdfMark, AdfNode, HeadingAttrs, LinkMark, Subsup},
+    adf::adf_types::{AdfBlockNode, AdfMark, AdfNode, HeadingAttrs, LinkMark, Subsup},
     html_to_adf::{ADFBuilder, HandlerFn, extract_style},
 };
 
@@ -23,13 +23,13 @@ pub(crate) fn rule_start_handler() -> HandlerFn {
                 BlockContext::Paragraph(_)
                     | BlockContext::ListItem(_)
                     | BlockContext::Blockquote(_)
-                    | BlockContext::TableBlock(TableBlockType::Cell, _)
-                    | BlockContext::TableBlock(TableBlockType::Header, _)
+                    | BlockContext::TableBlockCell(_)
+                    | BlockContext::TableBlockHeader(_)
             )
         ) {
             ADFBuilder::close_current_block(state);
         }
-        ADFBuilder::push_block_to_parent(state, AdfNode::Rule);
+        ADFBuilder::push_node_block_to_parent(state, AdfBlockNode::Rule);
         true
     }) as HandlerFn
 }
@@ -106,55 +106,13 @@ pub(crate) fn div_start_handler() -> HandlerFn {
 pub(crate) fn div_end_handler() -> HandlerFn {
     Box::new(|state: &mut ADFBuilderState, _element: Element| {
         ADFBuilder::flush_text(state);
-        if let Some(BlockContext::CustomBlock(CustomBlockType::Div, nodes, attrs)) =
-            state.stack.pop()
-        {
-            let all_inline = nodes
-                .iter()
-                .all(|n| matches!(n, AdfNode::Text { .. } | AdfNode::HardBreak));
-            if all_inline {
-                if nodes.is_empty() {
-                    return true;
-                }
-
-                let paragraph = AdfNode::Paragraph {
-                    content: Some(nodes),
-                };
-
-                let color = attrs
-                    .get("style")
-                    .and_then(|style| extract_style(style, "color"));
-                let bg = attrs
-                    .get("style")
-                    .and_then(|style| extract_style(style, "background-color"));
-
-                if color.is_some() || bg.is_some() {
-                    let mut marks = vec![];
-                    if let Some(color) = color {
-                        marks.push(AdfMark::TextColor { color });
-                    }
-                    if let Some(bg) = bg {
-                        marks.push(AdfMark::BackgroundColor { color: bg });
-                    }
-                    ADFBuilder::push_block_to_parent(
-                        state,
-                        AdfNode::Text {
-                            text: ADFBuilder::extract_text(&paragraph),
-                            marks: Some(marks),
-                        },
-                    );
-                } else {
-                    // If no color or background, treat as a normal paragraph
-                    ADFBuilder::push_block_to_parent(state, paragraph);
-                }
-            } else {
-                if nodes.is_empty() {
-                    return true;
-                }
-                // treat as transparent container, discard style, forward content
-                for node in nodes {
-                    ADFBuilder::push_block_to_parent(state, node);
-                }
+        if let Some(BlockContext::CustomBlock(CustomBlockType::Div, nodes, _)) = state.stack.pop() {
+            if nodes.is_empty() {
+                return true;
+            }
+            // treat as transparent container, discard style, forward content
+            for node in nodes {
+                ADFBuilder::push_node_block_to_parent(state, node);
             }
         } else {
             panic!("Mismatched div close tag");
@@ -364,9 +322,9 @@ pub(crate) fn header_end_handler(level: u8) -> HandlerFn {
         ADFBuilder::flush_text(state);
         if let Some(BlockContext::Heading(lvl, nodes)) = state.stack.pop() {
             if lvl == level {
-                ADFBuilder::push_block_to_parent(
+                ADFBuilder::push_node_block_to_parent(
                     state,
-                    AdfNode::Heading {
+                    AdfBlockNode::Heading {
                         attrs: HeadingAttrs { level },
                         content: Some(nodes),
                     },

@@ -1,8 +1,8 @@
 use super::{ADFBuilderState, BlockContext, CustomBlockType, Element, MediaBlockType};
 use crate::{
     adf::adf_types::{
-        AdfNode, LinkMark, MediaAttrs, MediaDataType, MediaMark, MediaNode, MediaSingleAttrs,
-        MediaType,
+        AdfBlockNode, AdfNode, LinkMark, MediaAttrs, MediaDataType, MediaMark, MediaNode,
+        MediaSingleAttrs, MediaType,
     },
     html_to_adf::{ADFBuilder, HandlerFn, extract_style},
 };
@@ -29,9 +29,9 @@ pub(crate) fn media_single_end_handler() -> HandlerFn {
         if let Some(BlockContext::MediaBlock(MediaBlockType::MediaSingle, nodes, attrs)) =
             state.stack.pop()
         {
-            ADFBuilder::push_block_to_parent(
+            ADFBuilder::push_node_block_to_parent(
                 state,
-                AdfNode::MediaSingle {
+                AdfBlockNode::MediaSingle {
                     attrs: MediaSingleAttrs {
                         layout: attrs
                             .get("data-layout")
@@ -68,7 +68,10 @@ pub(crate) fn media_group_end_handler() -> HandlerFn {
         if let Some(BlockContext::MediaBlock(MediaBlockType::MediaGroup, nodes, _)) =
             state.stack.pop()
         {
-            ADFBuilder::push_block_to_parent(state, AdfNode::MediaGroup { content: nodes });
+            ADFBuilder::push_node_block_to_parent(
+                state,
+                AdfBlockNode::MediaGroup { content: nodes },
+            );
         }
         true
     }) as HandlerFn
@@ -228,7 +231,7 @@ pub(crate) fn inline_card_end_handler() -> HandlerFn {
         state.current_text.clear();
         state.stack.pop();
         let href = attrs.get("href").cloned().unwrap_or_default();
-        ADFBuilder::push_block_to_parent(
+        ADFBuilder::push_node_to_parent(
             state,
             AdfNode::InlineCard {
                 attrs: crate::adf::adf_types::InlineCardAttrs { url: Some(href) },

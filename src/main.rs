@@ -5,7 +5,7 @@ use subseq_adf_convert::adf_to_html::adf_to_html;
 use subseq_adf_convert::markdown::html_to_markdown;
 use subseq_adf_convert::markdown::markdown_to_adf;
 
-use subseq_adf_convert::adf::adf_types::AdfNode;
+use subseq_adf_convert::adf::adf_types::AdfBlockNode;
 
 fn main() {
     // Get the first argument (after the program name)
@@ -41,7 +41,7 @@ fn main() {
     });
 
     // Parse as AdfNode
-    let adf: AdfNode = from_value(description).unwrap_or_else(|err| {
+    let adf: AdfBlockNode = from_value(description).unwrap_or_else(|err| {
         eprintln!("Failed to parse 'description' as AdfNode: {}", err);
         std::process::exit(1);
     });

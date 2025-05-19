@@ -4,7 +4,7 @@ use chrono::DateTime;
 
 use super::{ADFBuilderState, BlockContext, CustomBlockType, Element};
 use crate::{
-    adf::adf_types::{AdfNode, EmojiAttrs, LocalId, StatusAttrs},
+    adf::adf_types::{AdfBlockNode, AdfNode, EmojiAttrs, LocalId, StatusAttrs},
     html_to_adf::{ADFBuilder, HandlerFn, extract_style},
 };
 
@@ -33,7 +33,7 @@ pub(crate) fn date_end_handler() -> HandlerFn {
             let timestamp = DateTime::parse_from_rfc3339(&timestamp_str)
                 .map(|dt| dt.timestamp_millis())
                 .unwrap_or_default();
-            ADFBuilder::push_block_to_parent(
+            ADFBuilder::push_node_to_parent(
                 state,
                 AdfNode::Date {
                     attrs: crate::adf::adf_types::DateAttrs {
@@ -106,12 +106,13 @@ pub(crate) fn details_end_handler() -> HandlerFn {
 
         if let Some(BlockContext::CustomBlock(ty, nodes, attrs)) = state.stack.pop() {
             let title = attrs.get("data-summary").cloned().unwrap_or_default();
+            let nodes = ADFBuilder::trim_empty_paragraphs(nodes);
 
             match ty {
                 CustomBlockType::Expand => {
-                    ADFBuilder::push_block_to_parent(
+                    ADFBuilder::push_node_block_to_parent(
                         state,
-                        AdfNode::Expand {
+                        AdfBlockNode::Expand {
                             attrs: crate::adf::adf_types::ExpandAttrs {
                                 title: if title.is_empty() { None } else { Some(title) },
                             },
@@ -121,9 +122,9 @@ pub(crate) fn details_end_handler() -> HandlerFn {
                     true
                 }
                 CustomBlockType::NestedExpand => {
-                    ADFBuilder::push_block_to_parent(
+                    ADFBuilder::push_node_block_to_parent(
                         state,
-                        AdfNode::NestedExpand {
+                        AdfBlockNode::NestedExpand {
                             attrs: crate::adf::adf_types::NestedAttrs { title },
                             content: nodes,
                         },
@@ -160,13 +161,14 @@ pub(crate) fn figure_end_handler() -> HandlerFn {
         if let Some(BlockContext::CustomBlock(CustomBlockType::Panel, nodes, attrs)) =
             state.stack.pop()
         {
+            let nodes = ADFBuilder::trim_empty_paragraphs(nodes);
             let panel_type = attrs
                 .get("data-panel-type")
                 .cloned()
                 .unwrap_or_else(|| "info".to_string());
-            ADFBuilder::push_block_to_parent(
+            ADFBuilder::push_node_block_to_parent(
                 state,
-                AdfNode::Panel {
+                AdfBlockNode::Panel {
                     attrs: crate::adf::adf_types::PanelAttrs { panel_type },
                     content: nodes,
                 },
@@ -217,7 +219,7 @@ pub(crate) fn mention_end_handler() -> HandlerFn {
             )
             .unwrap_or_default();
 
-            ADFBuilder::push_block_to_parent(
+            ADFBuilder::push_node_to_parent(
                 state,
                 AdfNode::Mention {
                     attrs: crate::adf::adf_types::MentionAttrs {
@@ -282,7 +284,7 @@ pub(crate) fn status_end_handler() -> HandlerFn {
                 .get("style")
                 .and_then(|style| extract_style(style, "background-color"));
             let local_id = attrs.get("aria-label").map(|id| id.to_string());
-            ADFBuilder::push_block_to_parent(
+            ADFBuilder::push_node_to_parent(
                 state,
                 AdfNode::Status {
                     attrs: StatusAttrs {
@@ -327,7 +329,7 @@ pub(crate) fn emoji_end_handler() -> HandlerFn {
 
             let text = state.current_text.trim().to_string();
             state.current_text.clear();
-            ADFBuilder::push_block_to_parent(
+            ADFBuilder::push_node_to_parent(
                 state,
                 AdfNode::Emoji {
                     attrs: EmojiAttrs {

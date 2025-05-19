@@ -4,7 +4,7 @@ use markdown::{CompileOptions, Options, ParseOptions, to_html_with_options as ma
 use markup5ever_rcdom::{Handle, NodeData, SerializableHandle};
 
 use crate::{
-    adf::adf_types::AdfNode, adf_to_html::adf_to_html, html_sanitize::normalize_html,
+    adf::adf_types::AdfBlockNode, adf_to_html::adf_to_html, html_sanitize::normalize_html,
     html_to_adf::html_to_adf,
 };
 
@@ -185,11 +185,11 @@ pub fn html_to_markdown(html: String) -> String {
     converter.convert(&html).unwrap_or_default()
 }
 
-pub fn adf_to_markdown(adf: &[AdfNode]) -> String {
+pub fn adf_to_markdown(adf: &[AdfBlockNode]) -> String {
     html_to_markdown(adf_to_html(adf.to_vec()))
 }
 
-pub fn markdown_to_adf(markdown: &str) -> Option<AdfNode> {
+pub fn markdown_to_adf(markdown: &str) -> Option<AdfBlockNode> {
     let parse_options = ParseOptions::gfm();
     let options = Options {
         parse: parse_options,

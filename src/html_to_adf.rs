@@ -6,7 +6,9 @@ use html5ever::tokenizer::{
     BufferQueue, Tag, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
 };
 
-use crate::adf::adf_types::{AdfMark, AdfNode, DecisionItemAttrs, LocalId, TaskItemAttrs};
+use crate::adf::adf_types::{
+    AdfBlockNode, AdfMark, AdfNode, DecisionItemAttrs, ExpandAttrs, LocalId, TaskItemAttrs,
+};
 use crate::handlers::*;
 
 /// Cleans surrounding text by removing leading and trailing whitespace before and after newlines
@@ -201,6 +203,24 @@ impl ADFBuilder {
             .insert(tag.to_string(), Box::new(handler));
     }
 
+    pub fn push_into_last_paragraph(nodes: &mut Vec<AdfBlockNode>, adf_node: AdfNode) {
+        match nodes.last_mut() {
+            Some(AdfBlockNode::Paragraph { content }) => {
+                if let Some(content) = content {
+                    content.push(adf_node);
+                } else {
+                    *content = Some(vec![adf_node]);
+                }
+            }
+            _ => {
+                let paragraph = AdfBlockNode::Paragraph {
+                    content: Some(vec![adf_node]),
+                };
+                nodes.push(paragraph);
+            }
+        }
+    }
+
     pub fn flush_text(state: &mut ADFBuilderState) {
         if !state.current_text.is_empty() {
             let mut text = std::mem::take(&mut state.current_text);
@@ -211,8 +231,8 @@ impl ADFBuilder {
                 Some(
                     BlockContext::Heading(_, _)
                         | BlockContext::Paragraph(_)
-                        | BlockContext::TableBlock(TableBlockType::Cell, _)
-                        | BlockContext::TableBlock(TableBlockType::Header, _)
+                        | BlockContext::TableBlockCell(_)
+                        | BlockContext::TableBlockHeader(_)
                         | BlockContext::Blockquote(_)
                         | BlockContext::ListItem(_)
                 )
@@ -234,24 +254,29 @@ impl ADFBuilder {
 
             if let Some(frame) = state.stack.last_mut() {
                 match frame {
-                    BlockContext::Paragraph(nodes)
-                    | BlockContext::Heading(_, nodes)
-                    | BlockContext::Blockquote(nodes)
-                    | BlockContext::ListItem(nodes)
-                    | BlockContext::TableBlock(TableBlockType::Cell, nodes)
-                    | BlockContext::TableBlock(TableBlockType::Header, nodes) => {
+                    BlockContext::Paragraph(nodes) | BlockContext::Heading(_, nodes) => {
                         let node = AdfNode::Text {
                             text: text.clone(),
                             marks,
                         };
                         nodes.push(node);
                     }
+                    BlockContext::ListItem(nodes)
+                    | BlockContext::Blockquote(nodes)
+                    | BlockContext::TableBlockHeader(nodes)
+                    | BlockContext::TableBlockCell(nodes) => {
+                        let node = AdfNode::Text {
+                            text: text.clone(),
+                            marks,
+                        };
+                        Self::push_into_last_paragraph(nodes, node);
+                    }
                     BlockContext::TaskItem(nodes, _, _) => {
                         let node = AdfNode::Text {
                             text: text.trim().to_string(),
                             marks,
                         };
-                        let paragraph = AdfNode::Paragraph {
+                        let paragraph = AdfBlockNode::Paragraph {
                             content: Some(vec![node]),
                         };
                         nodes.push(paragraph);
@@ -261,7 +286,7 @@ impl ADFBuilder {
                             text: text.trim().to_string(),
                             marks,
                         };
-                        let paragraph = AdfNode::Paragraph {
+                        let paragraph = AdfBlockNode::Paragraph {
                             content: Some(vec![node]),
                         };
                         nodes.push(paragraph);
@@ -281,18 +306,6 @@ impl ADFBuilder {
         }
     }
 
-    fn flatten_top_level_paragraph(nodes: Vec<AdfNode>, parent_nodes: &mut Vec<AdfNode>) {
-        if !nodes.is_empty() {
-            if nodes.iter().all(|n| n.is_top_level_block()) {
-                parent_nodes.extend(nodes);
-            } else {
-                parent_nodes.push(AdfNode::Paragraph {
-                    content: Some(nodes),
-                });
-            }
-        }
-    }
-
     pub fn close_current_block(state: &mut ADFBuilderState) {
         let frame = state.stack.pop().expect("Expected a block context");
         let mut parent = state
@@ -302,20 +315,27 @@ impl ADFBuilder {
         match frame {
             BlockContext::Paragraph(nodes) => match &mut parent {
                 BlockContext::Document(parent_nodes)
-                | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
-                | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
+                | BlockContext::TableBlockCell(parent_nodes)
+                | BlockContext::TableBlockHeader(parent_nodes)
                 | BlockContext::Blockquote(parent_nodes)
                 | BlockContext::TaskItem(parent_nodes, _, _)
                 | BlockContext::DecisionItem(parent_nodes, _)
                 | BlockContext::ListItem(parent_nodes) => {
-                    Self::flatten_top_level_paragraph(nodes, parent_nodes);
+                    if nodes.is_empty() {
+                        return;
+                    }
+                    parent_nodes.push(AdfBlockNode::Paragraph {
+                        content: Some(nodes),
+                    });
                 }
                 BlockContext::CustomBlock(block_ty, parent_nodes, _) => match block_ty {
                     CustomBlockType::Div
                     | CustomBlockType::Expand
                     | CustomBlockType::NestedExpand
                     | CustomBlockType::Panel => {
-                        Self::flatten_top_level_paragraph(nodes, parent_nodes);
+                        parent_nodes.push(AdfBlockNode::Paragraph {
+                            content: Some(nodes),
+                        });
                     }
                     parent => {
                         panic!("Invalid parent for Paragraph: {parent:?}");
@@ -323,20 +343,31 @@ impl ADFBuilder {
                 },
                 parent => panic!("Invalid parent for Paragraph: {parent:?}"),
             },
-            BlockContext::CustomBlock(CustomBlockType::Expand, nodes, _) => match parent {
+            BlockContext::CustomBlock(CustomBlockType::Expand, nodes, attrs) => match parent {
                 BlockContext::Document(parent_nodes)
-                | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
-                | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
+                | BlockContext::TableBlockCell(parent_nodes)
+                | BlockContext::TableBlockHeader(parent_nodes)
                 | BlockContext::ListItem(parent_nodes)
                 | BlockContext::Blockquote(parent_nodes) => {
-                    Self::flatten_top_level_paragraph(nodes, parent_nodes);
+                    let title = attrs.get("title").cloned();
+                    let expand_attrs = ExpandAttrs { title };
+
+                    parent_nodes.push(AdfBlockNode::Expand {
+                        content: nodes,
+                        attrs: expand_attrs,
+                    });
                 }
                 BlockContext::CustomBlock(block_ty, parent_nodes, _) => match block_ty {
                     CustomBlockType::Div
                     | CustomBlockType::Expand
                     | CustomBlockType::NestedExpand
                     | CustomBlockType::Panel => {
-                        Self::flatten_top_level_paragraph(nodes, parent_nodes);
+                        let title = attrs.get("title").cloned();
+                        let expand_attrs = ExpandAttrs { title };
+                        parent_nodes.push(AdfBlockNode::Expand {
+                            content: nodes,
+                            attrs: expand_attrs,
+                        });
                     }
                     parent => {
                         panic!("Invalid parent for Paragraph: {parent:?}");
@@ -346,13 +377,13 @@ impl ADFBuilder {
             },
             BlockContext::CodeBlock(lines) => match parent {
                 BlockContext::Document(parent_nodes)
-                | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
-                | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
+                | BlockContext::TableBlockCell(parent_nodes)
+                | BlockContext::TableBlockHeader(parent_nodes)
                 | BlockContext::ListItem(parent_nodes)
                 | BlockContext::Blockquote(parent_nodes)
                 | BlockContext::CustomBlock(CustomBlockType::Div, parent_nodes, _) => {
                     let text = lines.join("");
-                    parent_nodes.push(AdfNode::CodeBlock {
+                    parent_nodes.push(AdfBlockNode::CodeBlock {
                         content: Some(vec![AdfNode::Text {
                             text: text.into(),
                             marks: None,
@@ -364,11 +395,11 @@ impl ADFBuilder {
             },
             BlockContext::Blockquote(nodes) => match parent {
                 BlockContext::Document(parent_nodes)
-                | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
-                | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
+                | BlockContext::TableBlockCell(parent_nodes)
+                | BlockContext::TableBlockHeader(parent_nodes)
                 | BlockContext::ListItem(parent_nodes)
                 | BlockContext::CustomBlock(CustomBlockType::Div, parent_nodes, _) => {
-                    parent_nodes.push(AdfNode::Blockquote { content: nodes })
+                    parent_nodes.push(AdfBlockNode::Blockquote { content: nodes })
                 }
                 _ => panic!("Invalid parent for Blockquote"),
             },
@@ -380,10 +411,9 @@ impl ADFBuilder {
             } => match parent {
                 BlockContext::Document(parent_nodes)
                 | BlockContext::CustomBlock(CustomBlockType::Div, parent_nodes, _)
-                | BlockContext::Paragraph(parent_nodes)
                 | BlockContext::Blockquote(parent_nodes)
-                | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
-                | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
+                | BlockContext::TableBlockCell(parent_nodes)
+                | BlockContext::TableBlockHeader(parent_nodes)
                 | BlockContext::ListItem(parent_nodes) => {
                     let is_task_list = local_tag
                         .as_ref()
@@ -394,26 +424,26 @@ impl ADFBuilder {
                         .map(|tag| tag == "decision-list")
                         .unwrap_or(false);
                     if is_task_list {
-                        parent_nodes.push(AdfNode::TaskList {
+                        parent_nodes.push(AdfBlockNode::TaskList {
                             attrs: LocalId {
                                 local_id: local_id.unwrap_or_default(),
                             },
                             content: nodes,
                         });
                     } else if is_decision_list {
-                        parent_nodes.push(AdfNode::DecisionList {
+                        parent_nodes.push(AdfBlockNode::DecisionList {
                             content: nodes,
                             attrs: LocalId {
                                 local_id: local_id.unwrap_or_default(),
                             },
                         });
                     } else if ordered {
-                        parent_nodes.push(AdfNode::OrderedList {
+                        parent_nodes.push(AdfBlockNode::OrderedList {
                             content: nodes,
                             attrs: None,
                         });
                     } else {
-                        parent_nodes.push(AdfNode::BulletList { content: nodes });
+                        parent_nodes.push(AdfBlockNode::BulletList { content: nodes });
                     }
                 }
                 parent => panic!("Invalid parent for PendingList: {parent:?}"),
@@ -441,10 +471,8 @@ impl ADFBuilder {
             }
         } else if let Some(BlockContext::TaskItem(nodes, item_state, local_id)) = stack_item {
             if let Some(BlockContext::PendingList { nodes: list, .. }) = state.stack.last_mut() {
-                let mut content = vec![];
-                Self::flatten_top_level_paragraph(nodes, &mut content);
                 let task_item = AdfNode::TaskItem {
-                    content,
+                    content: nodes,
                     attrs: TaskItemAttrs {
                         local_id,
                         state: item_state,
@@ -456,10 +484,8 @@ impl ADFBuilder {
             }
         } else if let Some(BlockContext::DecisionItem(nodes, local_id)) = stack_item {
             if let Some(BlockContext::PendingList { nodes: list, .. }) = state.stack.last_mut() {
-                let mut content = vec![];
-                Self::flatten_top_level_paragraph(nodes, &mut content);
                 list.push(AdfNode::DecisionItem {
-                    content,
+                    content: nodes,
                     attrs: DecisionItemAttrs {
                         local_id,
                         state: "DECIDED".to_string(),
@@ -473,14 +499,14 @@ impl ADFBuilder {
         }
     }
 
-    pub fn emit(self) -> AdfNode {
+    pub fn emit(self) -> AdfBlockNode {
         let mut state = self.state.into_inner();
         Self::flush_text(&mut state);
         while state.stack.len() > 1 {
             Self::close_current_block(&mut state);
         }
         if let BlockContext::Document(content) = state.stack.pop().unwrap() {
-            AdfNode::Doc {
+            AdfBlockNode::Doc {
                 content,
                 version: 1,
             }
@@ -493,9 +519,15 @@ impl ADFBuilder {
         if let Some(frame) = state.stack.last_mut() {
             match frame {
                 BlockContext::CodeBlock(lines) => lines.push("\n".into()),
-                BlockContext::Paragraph(nodes)
-                | BlockContext::Blockquote(nodes)
-                | BlockContext::ListItem(nodes) => nodes.push(node),
+                BlockContext::Paragraph(nodes) | BlockContext::Heading(_, nodes) => {
+                    nodes.push(node)
+                }
+                BlockContext::Blockquote(nodes)
+                | BlockContext::ListItem(nodes)
+                | BlockContext::DecisionItem(nodes, _)
+                | BlockContext::TaskItem(nodes, _, _) => {
+                    Self::push_into_last_paragraph(nodes, node);
+                }
                 _ => {
                     // Invalid context for LineBreak
                 }
@@ -508,36 +540,102 @@ impl ADFBuilder {
         Self::push_inline(state, node);
     }
 
-    pub fn push_block_to_parent(state: &mut ADFBuilderState, node: AdfNode) {
+    pub fn trim_empty_paragraphs(nodes: Vec<AdfBlockNode>) -> Vec<AdfBlockNode> {
+        nodes.into_iter().filter(|node| 
+            match node {
+                AdfBlockNode::Paragraph { content } => {
+                    if let Some(content) = content {
+                        !content.is_empty()
+                    } else {
+                        false
+                    }
+                }
+                _ => true,
+        })
+        .collect()
+    }
+
+    pub fn push_node_block_to_parent(state: &mut ADFBuilderState, node: AdfBlockNode) {
         let frame = state
             .stack
             .last_mut()
             .expect("There should always be at least the Document node");
         match frame {
-            BlockContext::TableBlock(_, nodes)
-            | BlockContext::Paragraph(nodes)
+            BlockContext::Document(nodes)
             | BlockContext::Blockquote(nodes)
-            | BlockContext::Heading(_, nodes)
+            | BlockContext::CustomBlock(CustomBlockType::Panel, nodes, _)
+            | BlockContext::CustomBlock(CustomBlockType::Expand, nodes, _)
+            | BlockContext::CustomBlock(CustomBlockType::NestedExpand, nodes, _)
+            | BlockContext::CustomBlock(CustomBlockType::Div, nodes, _)
             | BlockContext::ListItem(nodes)
-            | BlockContext::Document(nodes) => nodes.push(node),
-            BlockContext::CustomBlock(block_ty, nodes, _) => match block_ty {
-                CustomBlockType::Div => {
-                    nodes.push(node);
+            | BlockContext::TableBlockCell(nodes)
+            | BlockContext::TableBlockHeader(nodes) => {
+                match &node {
+                    AdfBlockNode::Paragraph { content } => match content {
+                        Some(content) => {
+                            if content.is_empty() {
+                                return;
+                            }
+                        }
+                        None => {
+                            return;
+                        }
+                    },
+                    _ => {}
                 }
-                CustomBlockType::Expand | CustomBlockType::Panel => {
-                    Self::flatten_top_level_paragraph(vec![node], nodes);
+                nodes.push(node);
+                return;
+            }
+            BlockContext::Paragraph(nodes) => {
+                // Invalid paragraph context for block node
+                // We need to drop the paragraph context
+                // and push the block node to the grandparent
+                if !nodes.is_empty() {
+                    panic!("Invalid paragraph context for block node: {frame:?} <-- {node:?}");
+                }
+            }
+            _ => {
+                panic!("Invalid block context for block node: {frame:?} <-- {node:?}");
+            }
+        }
+
+        state.stack.pop();
+        Self::push_node_block_to_parent(state, node);
+    }
+
+    pub fn push_node_to_parent(state: &mut ADFBuilderState, node: AdfNode) {
+        let frame = state
+            .stack
+            .last_mut()
+            .expect("There should always be at least the Document node");
+        match frame {
+            BlockContext::TableBlock(nodes)
+            | BlockContext::TableRowBlock(nodes)
+            | BlockContext::TableSectionBlock(nodes)
+            | BlockContext::Paragraph(nodes)
+            | BlockContext::Heading(_, nodes) => nodes.push(node),
+            BlockContext::Blockquote(nodes)
+            | BlockContext::ListItem(nodes)
+            | BlockContext::Document(nodes)
+            | BlockContext::TableBlockCell(nodes)
+            | BlockContext::TableBlockHeader(nodes) => {
+                Self::push_into_last_paragraph(nodes, node);
+            }
+            BlockContext::CustomBlock(block_ty, nodes, _) => match block_ty {
+                CustomBlockType::Div | CustomBlockType::Expand | CustomBlockType::Panel => {
+                    Self::push_into_last_paragraph(nodes, node);
                 }
                 _ => panic!("Invalid block context for custom block: {block_ty:?} {node:?}"),
             },
             frame => {
-                panic!("Invalid block context for block node: {frame:?} {node:?}");
+                panic!("Invalid block context for node: {frame:?} <-- {node:?}");
             }
         }
     }
 
-    pub fn extract_text(paragraph: &AdfNode) -> String {
+    pub fn extract_text(paragraph: &AdfBlockNode) -> String {
         match paragraph {
-            AdfNode::Paragraph {
+            AdfBlockNode::Paragraph {
                 content: Some(nodes),
             } => nodes
                 .iter()
@@ -636,7 +734,7 @@ impl TokenSink for ADFBuilder {
     }
 }
 
-pub fn html_to_adf(input: &str) -> AdfNode {
+pub fn html_to_adf(input: &str) -> AdfBlockNode {
     let mut queue: BufferQueue = Default::default();
     queue.push_back(Tendril::from_slice(input));
 
@@ -659,10 +757,10 @@ mod tests {
         MediaType, Subsup,
     };
 
-    fn assert_content_eq(adf: AdfNode, expected: Vec<AdfNode>) {
+    fn assert_content_eq(adf: AdfBlockNode, expected: Vec<AdfBlockNode>) {
         assert_eq!(
             adf,
-            AdfNode::Doc {
+            AdfBlockNode::Doc {
                 content: expected,
                 version: 1
             }
@@ -694,10 +792,12 @@ mod tests {
         let adf = html_to_adf(r#"<blockquote>Quoted text.</blockquote>"#);
         assert_content_eq(
             adf,
-            vec![AdfNode::Blockquote {
-                content: vec![AdfNode::Text {
-                    text: "Quoted text.".into(),
-                    marks: None,
+            vec![AdfBlockNode::Blockquote {
+                content: vec![AdfBlockNode::Paragraph {
+                    content: Some(vec![AdfNode::Text {
+                        text: "Quoted text.".into(),
+                        marks: None,
+                    }]),
                 }],
             }],
         );
@@ -708,18 +808,22 @@ mod tests {
         let adf = html_to_adf(r#"<ul><li>Item one</li><li>Item two</li></ul>"#);
         assert_content_eq(
             adf,
-            vec![AdfNode::BulletList {
+            vec![AdfBlockNode::BulletList {
                 content: vec![
                     AdfNode::ListItem {
-                        content: vec![AdfNode::Text {
-                            text: "Item one".into(),
-                            marks: None,
+                        content: vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Item one".into(),
+                                marks: None,
+                            }]),
                         }],
                     },
                     AdfNode::ListItem {
-                        content: vec![AdfNode::Text {
-                            text: "Item two".into(),
-                            marks: None,
+                        content: vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Item two".into(),
+                                marks: None,
+                            }]),
                         }],
                     },
                 ],
@@ -732,19 +836,23 @@ mod tests {
         let adf = html_to_adf(r#"<ol><li>Item one</li><li>Item two</li></ol>"#);
         assert_content_eq(
             adf,
-            vec![AdfNode::OrderedList {
+            vec![AdfBlockNode::OrderedList {
                 attrs: None,
                 content: vec![
                     AdfNode::ListItem {
-                        content: vec![AdfNode::Text {
-                            text: "Item one".into(),
-                            marks: None,
+                        content: vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Item one".into(),
+                                marks: None,
+                            }]),
                         }],
                     },
                     AdfNode::ListItem {
-                        content: vec![AdfNode::Text {
-                            text: "Item two".into(),
-                            marks: None,
+                        content: vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Item two".into(),
+                                marks: None,
+                            }]),
                         }],
                     },
                 ],
@@ -759,7 +867,7 @@ mod tests {
         );
         assert_content_eq(
             adf,
-            vec![AdfNode::Paragraph {
+            vec![AdfBlockNode::Paragraph {
                 content: Some(vec![
                     AdfNode::Text {
                         text: "Some text ".into(),
@@ -792,7 +900,7 @@ mod tests {
         );
         assert_content_eq(
             adf,
-            vec![AdfNode::Paragraph {
+            vec![AdfBlockNode::Paragraph {
                 content: Some(vec![
                     AdfNode::Text {
                         text: "This is ".into(),
@@ -834,7 +942,7 @@ mod tests {
         );
         assert_content_eq(
             adf,
-            vec![AdfNode::Paragraph {
+            vec![AdfBlockNode::Paragraph {
                 content: Some(vec![
                     AdfNode::Text {
                         text: "red text".into(),
@@ -869,14 +977,14 @@ mod tests {
         assert_content_eq(
             adf,
             vec![
-                AdfNode::CodeBlock {
+                AdfBlockNode::CodeBlock {
                     content: Some(vec![AdfNode::Text {
                         text: "let x = 42;".into(),
                         marks: None,
                     }]),
                     attrs: None,
                 },
-                AdfNode::Paragraph {
+                AdfBlockNode::Paragraph {
                     content: Some(vec![
                         AdfNode::Text {
                             text: "This is ".into(),
@@ -922,23 +1030,27 @@ mod tests {
 
         assert_content_eq(
             adf,
-            vec![AdfNode::Table {
+            vec![AdfBlockNode::Table {
                 attrs: None,
                 content: vec![
                     AdfNode::TableRow {
                         content: vec![
                             AdfNode::TableHeader {
                                 attrs: None,
-                                content: vec![AdfNode::Text {
-                                    text: "Header 1".into(),
-                                    marks: None,
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Header 1".into(),
+                                        marks: None,
+                                    }]),
                                 }],
                             },
                             AdfNode::TableHeader {
                                 attrs: None,
-                                content: vec![AdfNode::Text {
-                                    text: "Header 2".into(),
-                                    marks: None,
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Header 2".into(),
+                                        marks: None,
+                                    }]),
                                 }],
                             },
                         ],
@@ -947,9 +1059,11 @@ mod tests {
                         content: vec![
                             AdfNode::TableCell {
                                 attrs: None,
-                                content: vec![AdfNode::Text {
-                                    text: "Cell 1".into(),
-                                    marks: None,
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Cell 1".into(),
+                                        marks: None,
+                                    }]),
                                 }],
                             },
                             AdfNode::TableCell {
@@ -963,25 +1077,29 @@ mod tests {
                             AdfNode::TableCell {
                                 attrs: None,
                                 content: vec![
-                                    AdfNode::Paragraph {
+                                    AdfBlockNode::Paragraph {
                                         content: Some(vec![AdfNode::Text {
                                             text: "Nested paragraph".into(),
                                             marks: None,
                                         }]),
                                     },
-                                    AdfNode::Blockquote {
-                                        content: vec![AdfNode::Text {
-                                            text: "Blockquote inside cell".into(),
-                                            marks: None,
+                                    AdfBlockNode::Blockquote {
+                                        content: vec![AdfBlockNode::Paragraph {
+                                            content: Some(vec![AdfNode::Text {
+                                                text: "Blockquote inside cell".into(),
+                                                marks: None,
+                                            }]),
                                         }],
                                     },
                                 ],
                             },
                             AdfNode::TableCell {
                                 attrs: None,
-                                content: vec![AdfNode::Text {
-                                    text: "Simple text".into(),
-                                    marks: None,
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Simple text".into(),
+                                        marks: None,
+                                    }]),
                                 }],
                             },
                         ],
@@ -995,7 +1113,6 @@ mod tests {
     fn test_media_parsing() {
         let adf = html_to_adf(
             r#"
-            <p>
                 <adf-media-single data-layout="align-start">
                     <img
                         data-collection=""
@@ -1004,11 +1121,11 @@ mod tests {
                         style="width: 659px; height: 291px">
                     </img>
                 </adf-media-single>
-            </p>"#,
+            "#,
         );
         assert_content_eq(
             adf,
-            vec![AdfNode::MediaSingle {
+            vec![AdfBlockNode::MediaSingle {
                 content: vec![MediaNode {
                     media_type: MediaType::Media,
                     attrs: MediaAttrs {
@@ -1045,10 +1162,10 @@ mod tests {
         );
         assert_content_eq(
             adf,
-            vec![AdfNode::DecisionList {
+            vec![AdfBlockNode::DecisionList {
                 content: vec![
                     AdfNode::DecisionItem {
-                        content: vec![AdfNode::Paragraph {
+                        content: vec![AdfBlockNode::Paragraph {
                             content: Some(vec![AdfNode::Text {
                                 text: "Decision?".into(),
                                 marks: None,
@@ -1060,7 +1177,7 @@ mod tests {
                         },
                     },
                     AdfNode::DecisionItem {
-                        content: vec![AdfNode::Paragraph {
+                        content: vec![AdfBlockNode::Paragraph {
                             content: Some(vec![AdfNode::Text {
                                 text: "Do it".into(),
                                 marks: None,
@@ -1084,7 +1201,7 @@ mod tests {
         let adf = html_to_adf(r#"<p>First line<br/>Second line</p>"#);
         assert_content_eq(
             adf,
-            vec![AdfNode::Paragraph {
+            vec![AdfBlockNode::Paragraph {
                 content: Some(vec![
                     AdfNode::Text {
                         text: "First line".into(),
@@ -1106,14 +1223,14 @@ mod tests {
         assert_content_eq(
             adf,
             vec![
-                AdfNode::Paragraph {
+                AdfBlockNode::Paragraph {
                     content: Some(vec![AdfNode::Text {
                         text: "Before rule".into(),
                         marks: None,
                     }]),
                 },
-                AdfNode::Rule,
-                AdfNode::Paragraph {
+                AdfBlockNode::Rule,
+                AdfBlockNode::Paragraph {
                     content: Some(vec![AdfNode::Text {
                         text: "After rule".into(),
                         marks: None,
@@ -1136,21 +1253,21 @@ mod tests {
         assert_content_eq(
             adf,
             vec![
-                AdfNode::Heading {
+                AdfBlockNode::Heading {
                     attrs: HeadingAttrs { level: 1 },
                     content: Some(vec![AdfNode::Text {
                         text: "Main Heading".into(),
                         marks: None,
                     }]),
                 },
-                AdfNode::Heading {
+                AdfBlockNode::Heading {
                     attrs: HeadingAttrs { level: 2 },
                     content: Some(vec![AdfNode::Text {
                         text: "Sub Heading".into(),
                         marks: None,
                     }]),
                 },
-                AdfNode::Heading {
+                AdfBlockNode::Heading {
                     attrs: HeadingAttrs { level: 3 },
                     content: Some(vec![
                         AdfNode::Text {

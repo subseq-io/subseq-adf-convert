@@ -5,56 +5,17 @@ use strum_macros::{AsRefStr, Display, EnumIter, EnumString};
 #[strum(serialize_all = "camelCase")]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AdfNode {
-    Doc {
-        content: Vec<AdfNode>,
-        version: i32,
-    },
-    BlockCard {
-        attrs: BlockCardAttrs,
-    },
-    Blockquote {
-        content: Vec<AdfNode>,
-    },
-    BulletList {
-        content: Vec<AdfNode>,
-    },
-    CodeBlock {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        attrs: Option<CodeBlockAttrs>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        content: Option<Vec<AdfNode>>,
-    },
     HardBreak,
-    Heading {
-        attrs: HeadingAttrs,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        content: Option<Vec<AdfNode>>,
-    },
     ListItem {
-        content: Vec<AdfNode>,
-    },
-    OrderedList {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        attrs: Option<OrderedListAttrs>,
-        content: Vec<AdfNode>,
-    },
-    Paragraph {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        content: Option<Vec<AdfNode>>,
-    },
-    Rule,
-    Table {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        attrs: Option<TableAttrs>,
-        content: Vec<AdfNode>,
+        content: Vec<AdfBlockNode>,
     },
     TableCell {
         attrs: Option<TableCellAttrs>,
-        content: Vec<AdfNode>,
+        content: Vec<AdfBlockNode>,
     },
     TableHeader {
         attrs: Option<TableCellAttrs>,
-        content: Vec<AdfNode>,
+        content: Vec<AdfBlockNode>,
     },
     TableRow {
         content: Vec<AdfNode>,
@@ -74,13 +35,67 @@ pub enum AdfNode {
     Emoji {
         attrs: EmojiAttrs,
     },
-    Expand {
+    Mention {
+        attrs: MentionAttrs,
+    },
+    Status {
+        attrs: StatusAttrs,
+    },
+    // The following nodes exist but are not documented in the ADF spec:
+    // https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/
+    TaskItem {
+        content: Vec<AdfBlockNode>,
+        attrs: TaskItemAttrs,
+    },
+    DecisionItem {
+        content: Vec<AdfBlockNode>,
+        attrs: DecisionItemAttrs,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, EnumString, Display)]
+#[strum(serialize_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum AdfBlockNode {
+    Doc {
+        content: Vec<AdfBlockNode>,
+        version: i32,
+    },
+    Blockquote {
+        content: Vec<AdfBlockNode>,
+    },
+    BulletList {
         content: Vec<AdfNode>,
+    },
+    CodeBlock {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attrs: Option<CodeBlockAttrs>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<Vec<AdfNode>>,
+    },
+    Expand {
+        content: Vec<AdfBlockNode>,
         attrs: ExpandAttrs,
+    },
+    NestedExpand {
+        attrs: NestedAttrs,
+        content: Vec<AdfBlockNode>,
+    },
+    Paragraph {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<Vec<AdfNode>>,
+    },
+    Rule,
+    Heading {
+        attrs: HeadingAttrs,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<Vec<AdfNode>>,
     },
     Panel {
         attrs: PanelAttrs,
-        content: Vec<AdfNode>,
+        content: Vec<AdfBlockNode>,
     },
     MediaGroup {
         content: Vec<MediaNode>,
@@ -89,66 +104,44 @@ pub enum AdfNode {
         attrs: MediaSingleAttrs,
         content: Vec<MediaNode>,
     },
-    Mention {
-        attrs: MentionAttrs,
-    },
-    NestedExpand {
-        attrs: NestedAttrs,
+    Table {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attrs: Option<TableAttrs>,
         content: Vec<AdfNode>,
     },
-    Status {
-        attrs: StatusAttrs,
+    OrderedList {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attrs: Option<OrderedListAttrs>,
+        content: Vec<AdfNode>,
     },
     // The following nodes exist but are not documented in the ADF spec:
-    // https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/
+    BlockCard {
+        attrs: BlockCardAttrs,
+    },
     TaskList {
         attrs: LocalId,
         content: Vec<AdfNode>,
-    },
-    TaskItem {
-        content: Vec<AdfNode>,
-        attrs: TaskItemAttrs,
     },
     DecisionList {
         content: Vec<AdfNode>,
         attrs: LocalId,
     },
-    DecisionItem {
-        content: Vec<AdfNode>,
-        attrs: DecisionItemAttrs,
-    },
     #[serde(other)]
     Unknown,
 }
 
-impl AdfNode {
-    pub fn unwrap_doc(&mut self) -> Vec<AdfNode> {
+impl AdfBlockNode {
+    pub fn unwrap_doc(&mut self) -> Vec<AdfBlockNode> {
         if let Self::Doc { content, .. } = self {
             return content.clone();
         }
         Vec::new()
     }
+}
 
+impl AdfNode {
     pub fn is_task_item(&self) -> bool {
         matches!(self, Self::TaskItem { .. })
-    }
-
-    pub fn is_top_level_block(&self) -> bool {
-        matches!(
-            self,
-            AdfNode::Expand { .. }
-                | AdfNode::NestedExpand { .. }
-                | AdfNode::Panel { .. }
-                | AdfNode::TaskList { .. }
-                | AdfNode::DecisionList { .. }
-                | AdfNode::MediaGroup { .. }
-                | AdfNode::MediaSingle { .. }
-                | AdfNode::Table { .. }
-                | AdfNode::Rule
-                | AdfNode::Heading { .. }
-                | AdfNode::Blockquote { .. }
-                | AdfNode::Paragraph { .. }
-        )
     }
 }
 

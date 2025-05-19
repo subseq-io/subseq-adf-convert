@@ -5,14 +5,15 @@ use chrono::{DateTime, Utc};
 use urlencoding::encode;
 
 use crate::adf::adf_types::{
-    AdfMark, AdfNode, DataSourceView, MediaDataType, MediaMark, MediaNode, Subsup, TaskItemState,
+    AdfBlockNode, AdfMark, AdfNode, DataSourceView, MediaDataType, MediaMark, MediaNode, Subsup,
+    TaskItemState,
 };
 use crate::html_builder::*;
 
-pub fn adf_to_html(adf: Vec<AdfNode>) -> String {
+pub fn adf_to_html(adf: Vec<AdfBlockNode>) -> String {
     let mut buffer = Buffer::new();
     let node = buffer.body();
-    inner_adf_to_html(node, adf);
+    inner_block_adf_to_html(node, adf);
     buffer.finish()
 }
 
@@ -79,11 +80,143 @@ fn media_adf_to_html(mut node: Node, media_entries: Vec<MediaNode>) {
 fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
     for adf_node in adf {
         match adf_node {
-            AdfNode::Blockquote { content } => {
-                let blockquote = node.blockquote();
-                inner_adf_to_html(blockquote, content);
+            AdfNode::Date { attrs } => {
+                let ts_ms = attrs.timestamp.parse::<i64>().unwrap_or_default();
+                let dt: DateTime<Utc> = DateTime::from_timestamp_millis(ts_ms).unwrap_or_default();
+                let date_str = dt.to_rfc3339();
+                let mut date = node.time().attr(&format!("datetime=\"{}\"", date_str));
+                write!(date, "{}", date_str).ok();
             }
-            AdfNode::BlockCard { attrs } => {
+            AdfNode::Emoji { attrs } => {
+                let mut emoji = node
+                    .child(Cow::Borrowed("adf-emoji"))
+                    .attr(&format!("aria-alt=\"{}\"", attrs.short_name));
+                if let Some(text) = &attrs.text {
+                    write!(emoji, "{}", text).ok();
+                } else {
+                    write!(emoji, "{}", attrs.short_name).ok();
+                }
+            }
+            AdfNode::HardBreak => {
+                node.br();
+            }
+            AdfNode::InlineCard { attrs } => {
+                if let Some(url) = &attrs.url {
+                    let mut a_tag = node
+                        .a()
+                        .attr(&format!("href={}", url))
+                        .attr("data-inline-card=\"true\"")
+                        .attr("target=\"_blank\"")
+                        .attr("rel=\"noopener noreferrer\"");
+                    write!(a_tag, "External Link").ok();
+                }
+            }
+            AdfNode::ListItem { content } => {
+                let list_item = node.li();
+                inner_block_adf_to_html(list_item, content);
+            }
+            AdfNode::Mention { attrs } => {
+                let mut mention = node
+                    .child(Cow::Borrowed("adf-mention"))
+                    .attr(&format!("data-mention-id=\"{}\"", attrs.id));
+                mention = mention.attr(&format!(
+                    "data-user-type={}",
+                    serde_json::to_string(&attrs.user_type).expect("Failed to serialize")
+                ));
+                mention = mention.attr(&format!(
+                    "data-access-level={}",
+                    serde_json::to_string(&attrs.access_level).expect("Failed to serialize")
+                ));
+                if let Some(text) = &attrs.text {
+                    write!(mention, "{}", text).ok();
+                }
+            }
+            AdfNode::Status { attrs } => {
+                let mut status = node.child(Cow::Borrowed("adf-status")).attr(&format!(
+                    "style=\"background-color: {}\" aria-label=\"{}\"",
+                    attrs.color,
+                    attrs.local_id.unwrap_or_default()
+                ));
+                write!(status, "{}", attrs.text).ok();
+            }
+            AdfNode::TableCell { content, .. } => {
+                let cell = node.td();
+                inner_block_adf_to_html(cell, content);
+            }
+            AdfNode::TableHeader { content, .. } => {
+                let header = node.th();
+                inner_block_adf_to_html(header, content);
+            }
+            // TableRow is simplified now, always outputs <tr> (never decides on header itself anymore)
+            AdfNode::TableRow { content, .. } => {
+                let row = node.tr();
+                inner_adf_to_html(row, content);
+            }
+            AdfNode::Text { text, marks } => {
+                fn apply_marks(node: &mut Node, marks: &[AdfMark], text: &str) -> std::fmt::Result {
+                    if let Some((first, rest)) = marks.split_first() {
+                        let mut wrapped_node = match first {
+                            AdfMark::Strong => node.strong(),
+                            AdfMark::Em => node.em(),
+                            AdfMark::Code => node.code(),
+                            AdfMark::Link(mark) => node.a().attr(&format!("href={}", mark.href)),
+                            AdfMark::Strike => node.del(),
+                            AdfMark::Subsup { type_ } => match type_ {
+                                Subsup::Sup => node.sup(),
+                                Subsup::Sub => node.sub(),
+                            },
+                            AdfMark::Underline => {
+                                node.span().attr("style=text-decoration:underline")
+                            }
+                            AdfMark::TextColor { color } => {
+                                node.span().attr(&format!("style=\"color: {color}\""))
+                            }
+                            AdfMark::BackgroundColor { color } => node
+                                .span()
+                                .attr(&format!("style=\"background-color: {color}\"")),
+                        };
+                        apply_marks(&mut wrapped_node, rest, text)
+                    } else {
+                        write!(node, "{}", text)
+                    }
+                }
+                apply_marks(&mut node, &marks.unwrap_or_default(), &text).ok();
+            }
+            AdfNode::TaskItem { attrs, content } => {
+                let mut task_item = node.li();
+                let checked = if attrs.state == TaskItemState::Done {
+                    "checked"
+                } else {
+                    ""
+                };
+                let local_id = attrs.local_id;
+                task_item
+                    .child(Cow::Borrowed("adf-task-item"))
+                    .attr(&format!("id=\"{}\" type=checkbox {}", local_id, checked));
+                inner_block_adf_to_html(task_item, content);
+            }
+            AdfNode::DecisionItem { content, attrs } => {
+                let mut li = node.li();
+                let child = li
+                    .child(Cow::Borrowed("adf-decision-item"))
+                    .attr(&format!("id=\"{}\"", attrs.local_id));
+                inner_block_adf_to_html(child, content);
+            }
+            AdfNode::Unknown => {
+                panic!("Unknown node type");
+            }
+        }
+    }
+}
+
+fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>) {
+    for adf_node in adf {
+        match adf_node {
+            AdfBlockNode::Blockquote { content } => {
+                let blockquote = node.blockquote();
+                inner_block_adf_to_html(blockquote, content);
+            }
+            AdfBlockNode::BlockCard { attrs } => {
                 let mut block_card = node
                     .child(Cow::Borrowed("adf-block-card"))
                     .attr(&format!("data-block-card=\"{}\"", attrs.url));
@@ -109,11 +242,11 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     }
                 }
             }
-            AdfNode::BulletList { content } => {
+            AdfBlockNode::BulletList { content } => {
                 let list = node.ul();
                 inner_adf_to_html(list, content);
             }
-            AdfNode::CodeBlock { attrs, content } => {
+            AdfBlockNode::CodeBlock { attrs, content } => {
                 let mut pre = node.pre();
                 let mut code_block = pre.code();
                 if let Some(attrs) = &attrs {
@@ -125,38 +258,18 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     inner_adf_to_html(code_block, content);
                 }
             }
-            AdfNode::Date { attrs } => {
-                let ts_ms = attrs.timestamp.parse::<i64>().unwrap_or_default();
-                let dt: DateTime<Utc> = DateTime::from_timestamp_millis(ts_ms).unwrap_or_default();
-                let date_str = dt.to_rfc3339();
-                let mut date = node.time().attr(&format!("datetime=\"{}\"", date_str));
-                write!(date, "{}", date_str).ok();
-            }
-            AdfNode::Doc { content, .. } => {
+            AdfBlockNode::Doc { content, .. } => {
                 let doc = node.div();
-                inner_adf_to_html(doc, content);
+                inner_block_adf_to_html(doc, content);
             }
-            AdfNode::Emoji { attrs } => {
-                let mut emoji = node
-                    .child(Cow::Borrowed("adf-emoji"))
-                    .attr(&format!("aria-alt=\"{}\"", attrs.short_name));
-                if let Some(text) = &attrs.text {
-                    write!(emoji, "{}", text).ok();
-                } else {
-                    write!(emoji, "{}", attrs.short_name).ok();
-                }
-            }
-            AdfNode::Expand { content, attrs } => {
+            AdfBlockNode::Expand { content, attrs } => {
                 let mut expand = node.details();
                 if let Some(title) = attrs.title.as_ref() {
                     write!(expand.summary(), "{}", title).ok();
                 }
-                inner_adf_to_html(expand, content);
+                inner_block_adf_to_html(expand, content);
             }
-            AdfNode::HardBreak => {
-                node.br();
-            }
-            AdfNode::Heading { attrs, content } => {
+            AdfBlockNode::Heading { attrs, content } => {
                 let heading = match attrs.level {
                     1 => node.h1(),
                     2 => node.h2(),
@@ -170,80 +283,41 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     inner_adf_to_html(heading, content);
                 }
             }
-            AdfNode::InlineCard { attrs } => {
-                if let Some(url) = &attrs.url {
-                    let mut a_tag = node
-                        .a()
-                        .attr(&format!("href={}", url))
-                        .attr("data-inline-card=\"true\"")
-                        .attr("target=\"_blank\"")
-                        .attr("rel=\"noopener noreferrer\"");
-                    write!(a_tag, "External Link").ok();
-                }
-            }
-            AdfNode::ListItem { content } => {
-                let list_item = node.li();
-                inner_adf_to_html(list_item, content);
-            }
-            AdfNode::MediaGroup { content } => {
+            AdfBlockNode::MediaGroup { content } => {
                 let media_group = node.child(Cow::Borrowed("adf-media-group"));
                 media_adf_to_html(media_group, content);
             }
-            AdfNode::MediaSingle { content, attrs } => {
+            AdfBlockNode::MediaSingle { content, attrs } => {
                 let mut media_single = node.child(Cow::Borrowed("adf-media-single"));
                 media_single = media_single.attr(&format!("data-layout=\"{}\"", attrs.layout));
                 media_adf_to_html(media_single, content);
             }
-            AdfNode::Mention { attrs } => {
-                let mut mention = node
-                    .child(Cow::Borrowed("adf-mention"))
-                    .attr(&format!("data-mention-id=\"{}\"", attrs.id));
-                mention = mention.attr(&format!(
-                    "data-user-type={}",
-                    serde_json::to_string(&attrs.user_type).expect("Failed to serialize")
-                ));
-                mention = mention.attr(&format!(
-                    "data-access-level={}",
-                    serde_json::to_string(&attrs.access_level).expect("Failed to serialize")
-                ));
-                if let Some(text) = &attrs.text {
-                    write!(mention, "{}", text).ok();
-                }
-            }
-            AdfNode::NestedExpand { content, attrs } => {
+            AdfBlockNode::NestedExpand { content, attrs } => {
                 let mut expand = node.details().attr("data-nested=\"true\"");
                 write!(expand.summary(), "{}", attrs.title).ok();
-                inner_adf_to_html(expand, content);
+                inner_block_adf_to_html(expand, content);
             }
-            AdfNode::OrderedList { content, .. } => {
+            AdfBlockNode::OrderedList { content, .. } => {
                 let list = node.ol();
                 inner_adf_to_html(list, content);
             }
-            AdfNode::Panel { content, attrs } => {
+            AdfBlockNode::Panel { content, attrs } => {
                 let panel_type = attrs.panel_type.as_str();
                 let panel = node
                     .figure()
                     .attr(&format!("data-panel-type=\"{panel_type}\""));
-                inner_adf_to_html(panel, content);
+                inner_block_adf_to_html(panel, content);
             }
-            AdfNode::Paragraph { content } => {
+            AdfBlockNode::Paragraph { content } => {
                 let para = node.p();
                 if let Some(content) = content {
                     inner_adf_to_html(para, content);
                 }
             }
-            AdfNode::Rule => {
+            AdfBlockNode::Rule => {
                 node.hr();
             }
-            AdfNode::Status { attrs } => {
-                let mut status = node.child(Cow::Borrowed("adf-status")).attr(&format!(
-                    "style=\"background-color: {}\" aria-label=\"{}\"",
-                    attrs.color,
-                    attrs.local_id.unwrap_or_default()
-                ));
-                write!(status, "{}", attrs.text).ok();
-            }
-            AdfNode::Table { content, .. } => {
+            AdfBlockNode::Table { content, .. } => {
                 let mut table = node.table();
 
                 // Extract header rows and other rows
@@ -293,86 +367,22 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                     }
                 }
             }
-            AdfNode::TableCell { content, .. } => {
-                let cell = node.td();
-                inner_adf_to_html(cell, content);
-            }
-            AdfNode::TableHeader { content, .. } => {
-                let header = node.th();
-                inner_adf_to_html(header, content);
-            }
-            // TableRow is simplified now, always outputs <tr> (never decides on header itself anymore)
-            AdfNode::TableRow { content, .. } => {
-                let row = node.tr();
-                inner_adf_to_html(row, content);
-            }
-            AdfNode::Text { text, marks } => {
-                fn apply_marks(node: &mut Node, marks: &[AdfMark], text: &str) -> std::fmt::Result {
-                    if let Some((first, rest)) = marks.split_first() {
-                        let mut wrapped_node = match first {
-                            AdfMark::Strong => node.strong(),
-                            AdfMark::Em => node.em(),
-                            AdfMark::Code => node.code(),
-                            AdfMark::Link(mark) => node.a().attr(&format!("href={}", mark.href)),
-                            AdfMark::Strike => node.del(),
-                            AdfMark::Subsup { type_ } => match type_ {
-                                Subsup::Sup => node.sup(),
-                                Subsup::Sub => node.sub(),
-                            },
-                            AdfMark::Underline => {
-                                node.span().attr("style=text-decoration:underline")
-                            }
-                            AdfMark::TextColor { color } => {
-                                node.span().attr(&format!("style=\"color: {color}\""))
-                            }
-                            AdfMark::BackgroundColor { color } => node
-                                .span()
-                                .attr(&format!("style=\"background-color: {color}\"")),
-                        };
-                        apply_marks(&mut wrapped_node, rest, text)
-                    } else {
-                        write!(node, "{}", text)
-                    }
-                }
-                apply_marks(&mut node, &marks.unwrap_or_default(), &text).ok();
-            }
-            AdfNode::TaskList { content, attrs } => {
+            AdfBlockNode::TaskList { content, attrs } => {
                 node.child(Cow::Borrowed("adf-local-data"))
                     .attr(&format!("data-tag=\"task-list\""))
                     .attr(&format!("id=\"{}\"", attrs.local_id));
                 let task_list = node.ul();
                 inner_adf_to_html(task_list, content);
             }
-            AdfNode::TaskItem { attrs, content } => {
-                let mut task_item = node.li();
-                let checked = if attrs.state == TaskItemState::Done {
-                    "checked"
-                } else {
-                    ""
-                };
-                let local_id = attrs.local_id;
-                task_item
-                    .child(Cow::Borrowed("adf-task-item"))
-                    .attr(&format!("id=\"{}\" type=checkbox {}", local_id, checked));
-                inner_adf_to_html(task_item, content);
-            }
-            AdfNode::DecisionList { content, attrs } => {
+            AdfBlockNode::DecisionList { content, attrs } => {
                 node.child(Cow::Borrowed("adf-local-data"))
                     .attr(&format!("data-tag=\"decision-list\""))
                     .attr(&format!("id=\"{}\"", attrs.local_id));
                 let decision_list = node.ul();
                 inner_adf_to_html(decision_list, content);
             }
-            AdfNode::DecisionItem { content, attrs } => {
-                let mut li = node.li();
-                let child = li
-                    .child(Cow::Borrowed("adf-decision-item"))
-                    .attr(&format!("id=\"{}\"", attrs.local_id));
-                inner_adf_to_html(child, content);
-            }
-            AdfNode::Unknown => {
-                // Ignore unknown nodes
-                panic!("Unknown node type");
+            AdfBlockNode::Unknown => {
+                panic!("Unknown block node type");
             }
         }
     }
@@ -385,14 +395,14 @@ mod tests {
     use crate::html_to_adf::html_to_adf;
     use crate::markdown::{adf_to_markdown, markdown_to_adf};
 
-    fn roundtrip_adf_html_adf(adf: AdfNode) {
+    fn roundtrip_adf_html_adf(adf: AdfBlockNode) {
         let html = adf_to_html(vec![adf.clone()]);
         eprintln!("\n\nHTML:\n{}\n\n", html);
         let back = html_to_adf(&html);
         assert_eq!(back, adf, "Failed roundtrip adf -> html -> adf");
     }
 
-    fn roundtrip_adf_html_md_html_adf(adf: AdfNode) {
+    fn roundtrip_adf_html_md_html_adf(adf: AdfBlockNode) {
         let markdown = adf_to_markdown(&[adf.clone()]);
         eprintln!("\n\nMARKDOWN:\n{}\n\n", markdown);
         let back = markdown_to_adf(&markdown).unwrap();
@@ -404,8 +414,8 @@ mod tests {
 
     #[test]
     fn test_paragraph_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Paragraph {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Paragraph {
                 content: Some(vec![AdfNode::Text {
                     text: "Simple text".into(),
                     marks: None,
@@ -419,8 +429,8 @@ mod tests {
 
     #[test]
     fn test_heading_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Heading {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Heading {
                 attrs: HeadingAttrs { level: 2 },
                 content: Some(vec![AdfNode::Text {
                     text: "Heading level 2".into(),
@@ -435,12 +445,12 @@ mod tests {
 
     #[test]
     fn test_panel_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Panel {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Panel {
                 attrs: PanelAttrs {
                     panel_type: "info".into(),
                 },
-                content: vec![AdfNode::Paragraph {
+                content: vec![AdfBlockNode::Paragraph {
                     content: Some(vec![AdfNode::Text {
                         text: "Inside panel".into(),
                         marks: None,
@@ -455,8 +465,8 @@ mod tests {
 
     #[test]
     fn test_media_group_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::MediaGroup {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::MediaGroup {
                 content: vec![MediaNode {
                     media_type: MediaType::Media,
                     attrs: MediaAttrs {
@@ -478,8 +488,8 @@ mod tests {
 
     #[test]
     fn test_media_single_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::MediaSingle {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::MediaSingle {
                 attrs: MediaSingleAttrs {
                     layout: "center".into(),
                 },
@@ -504,8 +514,8 @@ mod tests {
 
     #[test]
     fn test_task_list_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::TaskList {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::TaskList {
                 attrs: LocalId {
                     local_id: "task-list-1".into(),
                 },
@@ -515,7 +525,7 @@ mod tests {
                             local_id: "item-1".into(),
                             state: TaskItemState::Todo,
                         },
-                        content: vec![AdfNode::Paragraph {
+                        content: vec![AdfBlockNode::Paragraph {
                             content: Some(vec![AdfNode::Text {
                                 text: "Task item".into(),
                                 marks: None,
@@ -527,7 +537,7 @@ mod tests {
                             local_id: "item-2".into(),
                             state: TaskItemState::Done,
                         },
-                        content: vec![AdfNode::Paragraph {
+                        content: vec![AdfBlockNode::Paragraph {
                             content: Some(vec![AdfNode::Text {
                                 text: "Task item 2".into(),
                                 marks: None,
@@ -544,8 +554,8 @@ mod tests {
 
     #[test]
     fn test_status_emoji_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Paragraph {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Paragraph {
                 content: Some(vec![
                     AdfNode::Status {
                         attrs: StatusAttrs {
@@ -570,12 +580,12 @@ mod tests {
 
     #[test]
     fn test_expand_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Expand {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Expand {
                 attrs: ExpandAttrs {
                     title: Some("Expand Title".into()),
                 },
-                content: vec![AdfNode::Paragraph {
+                content: vec![AdfBlockNode::Paragraph {
                     content: Some(vec![AdfNode::Text {
                         text: "Expandable content".into(),
                         marks: None,
@@ -590,12 +600,12 @@ mod tests {
 
     #[test]
     fn test_nested_expand_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::NestedExpand {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::NestedExpand {
                 attrs: NestedAttrs {
                     title: "Nested Title".into(),
                 },
-                content: vec![AdfNode::Paragraph {
+                content: vec![AdfBlockNode::Paragraph {
                     content: Some(vec![AdfNode::Text {
                         text: "Nested content".into(),
                         marks: None,
@@ -610,8 +620,8 @@ mod tests {
 
     #[test]
     fn test_date_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Paragraph {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Paragraph {
                 content: Some(vec![AdfNode::Date {
                     attrs: DateAttrs {
                         timestamp: "1700000000".into(),
@@ -626,8 +636,8 @@ mod tests {
 
     #[test]
     fn test_mention_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Paragraph {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Paragraph {
                 content: Some(vec![AdfNode::Mention {
                     attrs: MentionAttrs {
                         id: "user-1".into(),
@@ -645,8 +655,8 @@ mod tests {
 
     #[test]
     fn test_inline_card_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Paragraph {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Paragraph {
                 content: Some(vec![AdfNode::InlineCard {
                     attrs: InlineCardAttrs {
                         url: Some("https://example.com".into()),
@@ -661,8 +671,8 @@ mod tests {
 
     #[test]
     fn test_rule_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Rule],
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Rule],
             version: 1,
         };
         roundtrip_adf_html_adf(adf.clone());
@@ -671,19 +681,23 @@ mod tests {
 
     #[test]
     fn test_bullet_list_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::BulletList {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::BulletList {
                 content: vec![
                     AdfNode::ListItem {
-                        content: vec![AdfNode::Text {
-                            text: "Bullet 1".into(),
-                            marks: None,
+                        content: vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Bullet 1".into(),
+                                marks: None,
+                            }]),
                         }],
                     },
                     AdfNode::ListItem {
-                        content: vec![AdfNode::Text {
-                            text: "Bullet 2".into(),
-                            marks: None,
+                        content: vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Bullet 2".into(),
+                                marks: None,
+                            }]),
                         }],
                     },
                 ],
@@ -696,19 +710,23 @@ mod tests {
 
     #[test]
     fn test_ordered_list_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::OrderedList {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::OrderedList {
                 content: vec![
                     AdfNode::ListItem {
-                        content: vec![AdfNode::Text {
-                            text: "Ordered 1".into(),
-                            marks: None,
+                        content: vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Ordered 1".into(),
+                                marks: None,
+                            }]),
                         }],
                     },
                     AdfNode::ListItem {
-                        content: vec![AdfNode::Text {
-                            text: "Ordered 2".into(),
-                            marks: None,
+                        content: vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Ordered 2".into(),
+                                marks: None,
+                            }]),
                         }],
                     },
                 ],
@@ -722,9 +740,9 @@ mod tests {
 
     #[test]
     fn test_blockquote_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Blockquote {
-                content: vec![AdfNode::Paragraph {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Blockquote {
+                content: vec![AdfBlockNode::Paragraph {
                     content: Some(vec![AdfNode::Text {
                         text: "Blockquoted text".into(),
                         marks: None,
@@ -739,8 +757,8 @@ mod tests {
 
     #[test]
     fn test_codeblock_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::CodeBlock {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::CodeBlock {
                 attrs: None,
                 content: Some(vec![AdfNode::Text {
                     text: "let x = 42;\n".into(),
@@ -755,8 +773,8 @@ mod tests {
 
     #[test]
     fn test_hardbreak_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Paragraph {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Paragraph {
                 content: Some(vec![
                     AdfNode::Text {
                         text: "Line one".into(),
@@ -777,8 +795,8 @@ mod tests {
 
     #[test]
     fn test_decision_list_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::DecisionList {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::DecisionList {
                 attrs: LocalId {
                     local_id: "decision-list-1".into(),
                 },
@@ -787,7 +805,7 @@ mod tests {
                         state: "DECIDED".into(),
                         local_id: "item-1".into(),
                     },
-                    content: vec![AdfNode::Paragraph {
+                    content: vec![AdfBlockNode::Paragraph {
                         content: Some(vec![AdfNode::Text {
                             text: "Decision content".into(),
                             marks: None,
@@ -803,25 +821,29 @@ mod tests {
 
     #[test]
     fn test_table_roundtrip() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Table {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Table {
                 attrs: None,
                 content: vec![
                     AdfNode::TableRow {
                         content: vec![AdfNode::TableHeader {
                             attrs: None,
-                            content: vec![AdfNode::Text {
-                                text: "Header".into(),
-                                marks: None,
+                            content: vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Header".into(),
+                                    marks: None,
+                                }]),
                             }],
                         }],
                     },
                     AdfNode::TableRow {
                         content: vec![AdfNode::TableCell {
                             attrs: None,
-                            content: vec![AdfNode::Text {
-                                text: "Cell".into(),
-                                marks: None,
+                            content: vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Cell".into(),
+                                    marks: None,
+                                }]),
                             }],
                         }],
                     },
@@ -835,54 +857,62 @@ mod tests {
 
     #[test]
     fn test_full_doc_with_header_paragraph_list_table() {
-        let adf = AdfNode::Doc {
+        let adf = AdfBlockNode::Doc {
             content: vec![
-                AdfNode::Heading {
+                AdfBlockNode::Heading {
                     attrs: HeadingAttrs { level: 1 },
                     content: Some(vec![AdfNode::Text {
                         text: "Document Title".into(),
                         marks: None,
                     }]),
                 },
-                AdfNode::Paragraph {
+                AdfBlockNode::Paragraph {
                     content: Some(vec![AdfNode::Text {
                         text: "Introductory paragraph.".into(),
                         marks: None,
                     }]),
                 },
-                AdfNode::BulletList {
+                AdfBlockNode::BulletList {
                     content: vec![
                         AdfNode::ListItem {
-                            content: vec![AdfNode::Text {
-                                text: "Item 1".into(),
-                                marks: None,
+                            content: vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Item 1".into(),
+                                    marks: None,
+                                }]),
                             }],
                         },
                         AdfNode::ListItem {
-                            content: vec![AdfNode::Text {
-                                text: "Item 2".into(),
-                                marks: None,
+                            content: vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Item 2".into(),
+                                    marks: None,
+                                }]),
                             }],
                         },
                     ],
                 },
-                AdfNode::Table {
+                AdfBlockNode::Table {
                     attrs: None,
                     content: vec![
                         AdfNode::TableRow {
                             content: vec![
                                 AdfNode::TableHeader {
                                     attrs: None,
-                                    content: vec![AdfNode::Text {
-                                        text: "Header 1".into(),
-                                        marks: None,
+                                    content: vec![AdfBlockNode::Paragraph {
+                                        content: Some(vec![AdfNode::Text {
+                                            text: "Header 1".into(),
+                                            marks: None,
+                                        }]),
                                     }],
                                 },
                                 AdfNode::TableHeader {
                                     attrs: None,
-                                    content: vec![AdfNode::Text {
-                                        text: "Header 2".into(),
-                                        marks: None,
+                                    content: vec![AdfBlockNode::Paragraph {
+                                        content: Some(vec![AdfNode::Text {
+                                            text: "Header 2".into(),
+                                            marks: None,
+                                        }]),
                                     }],
                                 },
                             ],
@@ -891,16 +921,20 @@ mod tests {
                             content: vec![
                                 AdfNode::TableCell {
                                     attrs: None,
-                                    content: vec![AdfNode::Text {
-                                        text: "Cell 1".into(),
-                                        marks: None,
+                                    content: vec![AdfBlockNode::Paragraph {
+                                        content: Some(vec![AdfNode::Text {
+                                            text: "Cell 1".into(),
+                                            marks: None,
+                                        }]),
                                     }],
                                 },
                                 AdfNode::TableCell {
                                     attrs: None,
-                                    content: vec![AdfNode::Text {
-                                        text: "Cell 2".into(),
-                                        marks: None,
+                                    content: vec![AdfBlockNode::Paragraph {
+                                        content: Some(vec![AdfNode::Text {
+                                            text: "Cell 2".into(),
+                                            marks: None,
+                                        }]),
                                     }],
                                 },
                             ],
@@ -916,9 +950,9 @@ mod tests {
 
     #[test]
     fn test_full_doc_with_decision_status_panel() {
-        let adf = AdfNode::Doc {
+        let adf = AdfBlockNode::Doc {
             content: vec![
-                AdfNode::DecisionList {
+                AdfBlockNode::DecisionList {
                     attrs: LocalId {
                         local_id: "decision-1".into(),
                     },
@@ -927,7 +961,7 @@ mod tests {
                             state: "DECIDED".into(),
                             local_id: "item-1".into(),
                         },
-                        content: vec![AdfNode::Paragraph {
+                        content: vec![AdfBlockNode::Paragraph {
                             content: Some(vec![AdfNode::Text {
                                 text: "We will proceed.".into(),
                                 marks: None,
@@ -935,7 +969,7 @@ mod tests {
                         }],
                     }],
                 },
-                AdfNode::Paragraph {
+                AdfBlockNode::Paragraph {
                     content: Some(vec![AdfNode::Status {
                         attrs: StatusAttrs {
                             text: "Approved".into(),
@@ -944,11 +978,11 @@ mod tests {
                         },
                     }]),
                 },
-                AdfNode::Panel {
+                AdfBlockNode::Panel {
                     attrs: PanelAttrs {
                         panel_type: "warning".into(),
                     },
-                    content: vec![AdfNode::Paragraph {
+                    content: vec![AdfBlockNode::Paragraph {
                         content: Some(vec![AdfNode::Text {
                             text: "This is important context.".into(),
                             marks: None,
@@ -964,16 +998,16 @@ mod tests {
 
     #[test]
     fn test_full_doc_with_media_inline_expand() {
-        let adf = AdfNode::Doc {
+        let adf = AdfBlockNode::Doc {
             content: vec![
-                AdfNode::Paragraph {
+                AdfBlockNode::Paragraph {
                     content: Some(vec![AdfNode::InlineCard {
                         attrs: InlineCardAttrs {
                             url: Some("https://example.com".into()),
                         },
                     }]),
                 },
-                AdfNode::MediaGroup {
+                AdfBlockNode::MediaGroup {
                     content: vec![MediaNode {
                         media_type: MediaType::Media,
                         attrs: MediaAttrs {
@@ -987,11 +1021,11 @@ mod tests {
                         marks: None,
                     }],
                 },
-                AdfNode::Expand {
+                AdfBlockNode::Expand {
                     attrs: ExpandAttrs {
                         title: Some("See more".into()),
                     },
-                    content: vec![AdfNode::Paragraph {
+                    content: vec![AdfBlockNode::Paragraph {
                         content: Some(vec![AdfNode::Text {
                             text: "Hidden details.".into(),
                             marks: None,
@@ -1007,8 +1041,8 @@ mod tests {
 
     #[test]
     fn test_paragraph_with_mixed_inline() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Paragraph {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Paragraph {
                 content: Some(vec![
                     AdfNode::Text {
                         text: "Hello ".into(),
@@ -1057,23 +1091,23 @@ mod tests {
 
     #[test]
     fn test_nested_expand_inside_panel() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Panel {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Panel {
                 attrs: PanelAttrs {
                     panel_type: "info".into(),
                 },
                 content: vec![
-                    AdfNode::Paragraph {
+                    AdfBlockNode::Paragraph {
                         content: Some(vec![AdfNode::Text {
                             text: "Intro panel".into(),
                             marks: None,
                         }]),
                     },
-                    AdfNode::Expand {
+                    AdfBlockNode::Expand {
                         attrs: ExpandAttrs {
                             title: Some("Expand inside panel".into()),
                         },
-                        content: vec![AdfNode::Paragraph {
+                        content: vec![AdfBlockNode::Paragraph {
                             content: Some(vec![AdfNode::Text {
                                 text: "More details".into(),
                                 marks: None,
@@ -1090,9 +1124,9 @@ mod tests {
 
     #[test]
     fn test_mixed_decision_and_task_lists() {
-        let adf = AdfNode::Doc {
+        let adf = AdfBlockNode::Doc {
             content: vec![
-                AdfNode::TaskList {
+                AdfBlockNode::TaskList {
                     attrs: LocalId {
                         local_id: "task-list".into(),
                     },
@@ -1102,7 +1136,7 @@ mod tests {
                                 local_id: "task-1".into(),
                                 state: TaskItemState::Todo,
                             },
-                            content: vec![AdfNode::Paragraph {
+                            content: vec![AdfBlockNode::Paragraph {
                                 content: Some(vec![AdfNode::Text {
                                     text: "First task".into(),
                                     marks: None,
@@ -1114,7 +1148,7 @@ mod tests {
                                 local_id: "task-2".into(),
                                 state: TaskItemState::Done,
                             },
-                            content: vec![AdfNode::Paragraph {
+                            content: vec![AdfBlockNode::Paragraph {
                                 content: Some(vec![AdfNode::Text {
                                     text: "Second task".into(),
                                     marks: None,
@@ -1123,7 +1157,7 @@ mod tests {
                         },
                     ],
                 },
-                AdfNode::DecisionList {
+                AdfBlockNode::DecisionList {
                     attrs: LocalId {
                         local_id: "decision-list".into(),
                     },
@@ -1133,7 +1167,7 @@ mod tests {
                                 state: "DECIDED".into(),
                                 local_id: "decision-1".into(),
                             },
-                            content: vec![AdfNode::Paragraph {
+                            content: vec![AdfBlockNode::Paragraph {
                                 content: Some(vec![AdfNode::Text {
                                     text: "Agreed decision".into(),
                                     marks: None,
@@ -1145,7 +1179,7 @@ mod tests {
                                 state: "DECIDED".into(),
                                 local_id: "decision-2".into(),
                             },
-                            content: vec![AdfNode::Paragraph {
+                            content: vec![AdfBlockNode::Paragraph {
                                 content: Some(vec![AdfNode::Text {
                                     text: "Pending decision".into(),
                                     marks: None,
@@ -1163,32 +1197,36 @@ mod tests {
 
     #[test]
     fn test_table_with_complex_content() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Table {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Table {
                 attrs: None,
                 content: vec![
                     AdfNode::TableRow {
                         content: vec![
                             AdfNode::TableHeader {
                                 attrs: None,
-                                content: vec![
-                                    AdfNode::Text {
-                                        text: "Bold header".into(),
-                                        marks: Some(vec![AdfMark::Strong]),
-                                    },
-                                    AdfNode::Emoji {
-                                        attrs: EmojiAttrs {
-                                            text: Some("📊".into()),
-                                            short_name: ":bar_chart:".into(),
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![
+                                        AdfNode::Text {
+                                            text: "Bold header".into(),
+                                            marks: Some(vec![AdfMark::Strong]),
                                         },
-                                    },
-                                ],
+                                        AdfNode::Emoji {
+                                            attrs: EmojiAttrs {
+                                                text: Some("📊".into()),
+                                                short_name: ":bar_chart:".into(),
+                                            },
+                                        },
+                                    ]),
+                                }],
                             },
                             AdfNode::TableHeader {
                                 attrs: None,
-                                content: vec![AdfNode::Text {
-                                    text: "Plain header".into(),
-                                    marks: None,
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Plain header".into(),
+                                        marks: None,
+                                    }]),
                                 }],
                             },
                         ],
@@ -1197,23 +1235,27 @@ mod tests {
                         content: vec![
                             AdfNode::TableCell {
                                 attrs: None,
-                                content: vec![
-                                    AdfNode::Text {
-                                        text: "Line 1 ".into(),
-                                        marks: None,
-                                    },
-                                    AdfNode::Text {
-                                        text: "Line 2".into(),
-                                        marks: Some(vec![AdfMark::Strong]),
-                                    },
-                                ],
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![
+                                        AdfNode::Text {
+                                            text: "Line 1 ".into(),
+                                            marks: None,
+                                        },
+                                        AdfNode::Text {
+                                            text: "Line 2".into(),
+                                            marks: Some(vec![AdfMark::Strong]),
+                                        },
+                                    ]),
+                                }],
                             },
                             AdfNode::TableCell {
                                 attrs: None,
-                                content: vec![AdfNode::InlineCard {
-                                    attrs: InlineCardAttrs {
-                                        url: Some("https://inline.cell".into()),
-                                    },
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::InlineCard {
+                                        attrs: InlineCardAttrs {
+                                            url: Some("https://inline.cell".into()),
+                                        },
+                                    }]),
                                 }],
                             },
                         ],
@@ -1228,33 +1270,37 @@ mod tests {
 
     #[test]
     fn test_complex_blockquote() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Blockquote {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Blockquote {
                 content: vec![
-                    AdfNode::Paragraph {
+                    AdfBlockNode::Paragraph {
                         content: Some(vec![AdfNode::Text {
                             text: "Intro quote".into(),
                             marks: None,
                         }]),
                     },
-                    AdfNode::OrderedList {
+                    AdfBlockNode::OrderedList {
                         content: vec![
                             AdfNode::ListItem {
-                                content: vec![AdfNode::Text {
-                                    text: "List item 1".into(),
-                                    marks: None,
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "List item 1".into(),
+                                        marks: None,
+                                    }]),
                                 }],
                             },
                             AdfNode::ListItem {
-                                content: vec![AdfNode::Text {
-                                    text: "List item 2".into(),
-                                    marks: None,
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "List item 2".into(),
+                                        marks: None,
+                                    }]),
                                 }],
                             },
                         ],
                         attrs: None,
                     },
-                    AdfNode::CodeBlock {
+                    AdfBlockNode::CodeBlock {
                         content: Some(vec![AdfNode::Text {
                             text: "let x = 10;\n".into(),
                             marks: None,
@@ -1271,16 +1317,16 @@ mod tests {
 
     #[test]
     fn test_full_document_comprehensive() {
-        let adf = AdfNode::Doc {
+        let adf = AdfBlockNode::Doc {
             content: vec![
-                AdfNode::Heading {
+                AdfBlockNode::Heading {
                     attrs: HeadingAttrs { level: 1 },
                     content: Some(vec![AdfNode::Text {
                         text: "Comprehensive Doc".into(),
                         marks: None,
                     }]),
                 },
-                AdfNode::Paragraph {
+                AdfBlockNode::Paragraph {
                     content: Some(vec![
                         AdfNode::Text {
                             text: " Mixed content paragraph ".into(),
@@ -1303,8 +1349,8 @@ mod tests {
                         },
                     ]),
                 },
-                AdfNode::Rule,
-                AdfNode::MediaGroup {
+                AdfBlockNode::Rule,
+                AdfBlockNode::MediaGroup {
                     content: vec![MediaNode {
                         media_type: MediaType::Media,
                         attrs: MediaAttrs {
@@ -1318,11 +1364,11 @@ mod tests {
                         marks: None,
                     }],
                 },
-                AdfNode::Expand {
+                AdfBlockNode::Expand {
                     attrs: ExpandAttrs {
                         title: Some("Expand Block".into()),
                     },
-                    content: vec![AdfNode::Paragraph {
+                    content: vec![AdfBlockNode::Paragraph {
                         content: Some(vec![AdfNode::Text {
                             text: "Expandable content. ".into(),
                             marks: Some(vec![
@@ -1336,31 +1382,35 @@ mod tests {
                         }]),
                     }],
                 },
-                AdfNode::Table {
+                AdfBlockNode::Table {
                     attrs: None,
                     content: vec![
                         AdfNode::TableRow {
                             content: vec![AdfNode::TableHeader {
                                 attrs: None,
-                                content: vec![AdfNode::Text {
-                                    text: "Header 1".into(),
-                                    marks: None,
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Header 1".into(),
+                                        marks: None,
+                                    }]),
                                 }],
                             }],
                         },
                         AdfNode::TableRow {
                             content: vec![AdfNode::TableCell {
                                 attrs: None,
-                                content: vec![AdfNode::Text {
-                                    text: "Cell 1".into(),
-                                    marks: None,
+                                content: vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Cell 1".into(),
+                                        marks: None,
+                                    }]),
                                 }],
                             }],
                         },
                     ],
                 },
-                AdfNode::Blockquote {
-                    content: vec![AdfNode::Paragraph {
+                AdfBlockNode::Blockquote {
+                    content: vec![AdfBlockNode::Paragraph {
                         content: Some(vec![AdfNode::Text {
                             text: "Quote in block".into(),
                             marks: None,
@@ -1376,8 +1426,8 @@ mod tests {
 
     #[test]
     fn test_header_with_emoji() {
-        let adf = AdfNode::Doc {
-            content: vec![AdfNode::Heading {
+        let adf = AdfBlockNode::Doc {
+            content: vec![AdfBlockNode::Heading {
                 attrs: HeadingAttrs { level: 1 },
                 content: Some(vec![
                     AdfNode::Text {
