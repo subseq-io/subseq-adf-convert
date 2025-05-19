@@ -10,10 +10,10 @@ use crate::adf::adf_types::{
 };
 use crate::html_builder::*;
 
-pub fn adf_to_html(adf: Vec<AdfBlockNode>) -> String {
+pub fn adf_to_html(adf: Vec<AdfBlockNode>, buf: &str) -> String {
     let mut buffer = Buffer::new();
     let node = buffer.body();
-    inner_block_adf_to_html(node, adf);
+    inner_block_adf_to_html(node, adf, buf);
     buffer.finish()
 }
 
@@ -77,7 +77,7 @@ fn media_adf_to_html(mut node: Node, media_entries: Vec<MediaNode>) {
     }
 }
 
-fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
+fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>, buf: &str) {
     for adf_node in adf {
         match adf_node {
             AdfNode::Date { attrs } => {
@@ -113,7 +113,7 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
             }
             AdfNode::ListItem { content } => {
                 let list_item = node.li();
-                inner_block_adf_to_html(list_item, content);
+                inner_block_adf_to_html(list_item, content, buf);
             }
             AdfNode::Mention { attrs } => {
                 let mut mention = node
@@ -141,16 +141,16 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
             }
             AdfNode::TableCell { content, .. } => {
                 let cell = node.td();
-                inner_block_adf_to_html(cell, content);
+                inner_block_adf_to_html(cell, content, buf);
             }
             AdfNode::TableHeader { content, .. } => {
                 let header = node.th();
-                inner_block_adf_to_html(header, content);
+                inner_block_adf_to_html(header, content, buf);
             }
             // TableRow is simplified now, always outputs <tr> (never decides on header itself anymore)
             AdfNode::TableRow { content, .. } => {
                 let row = node.tr();
-                inner_adf_to_html(row, content);
+                inner_adf_to_html(row, content, buf);
             }
             AdfNode::Text { text, marks } => {
                 fn apply_marks(node: &mut Node, marks: &[AdfMark], text: &str) -> std::fmt::Result {
@@ -193,28 +193,28 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 task_item
                     .child(Cow::Borrowed("adf-task-item"))
                     .attr(&format!("id=\"{}\" type=checkbox {}", local_id, checked));
-                inner_block_adf_to_html(task_item, content);
+                inner_block_adf_to_html(task_item, content, buf);
             }
             AdfNode::DecisionItem { content, attrs } => {
                 let mut li = node.li();
                 let child = li
                     .child(Cow::Borrowed("adf-decision-item"))
                     .attr(&format!("id=\"{}\"", attrs.local_id));
-                inner_block_adf_to_html(child, content);
+                inner_block_adf_to_html(child, content, buf);
             }
             AdfNode::Unknown => {
-                panic!("Unknown node type");
+                tracing::warn!("Unknown node type in {}", buf);
             }
         }
     }
 }
 
-fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>) {
+fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>, buf: &str) {
     for adf_node in adf {
         match adf_node {
             AdfBlockNode::Blockquote { content } => {
                 let blockquote = node.blockquote();
-                inner_block_adf_to_html(blockquote, content);
+                inner_block_adf_to_html(blockquote, content, buf);
             }
             AdfBlockNode::BlockCard { attrs } => {
                 let mut block_card = node
@@ -244,7 +244,7 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>) {
             }
             AdfBlockNode::BulletList { content } => {
                 let list = node.ul();
-                inner_adf_to_html(list, content);
+                inner_adf_to_html(list, content, buf);
             }
             AdfBlockNode::CodeBlock { attrs, content } => {
                 let mut pre = node.pre();
@@ -255,19 +255,19 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>) {
                     }
                 }
                 if let Some(content) = content {
-                    inner_adf_to_html(code_block, content);
+                    inner_adf_to_html(code_block, content, buf);
                 }
             }
             AdfBlockNode::Doc { content, .. } => {
                 let doc = node.div();
-                inner_block_adf_to_html(doc, content);
+                inner_block_adf_to_html(doc, content, buf);
             }
             AdfBlockNode::Expand { content, attrs } => {
                 let mut expand = node.details();
                 if let Some(title) = attrs.title.as_ref() {
                     write!(expand.summary(), "{}", title).ok();
                 }
-                inner_block_adf_to_html(expand, content);
+                inner_block_adf_to_html(expand, content, buf);
             }
             AdfBlockNode::Heading { attrs, content } => {
                 let heading = match attrs.level {
@@ -280,7 +280,7 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>) {
                     _ => node.h6(),
                 };
                 if let Some(content) = content {
-                    inner_adf_to_html(heading, content);
+                    inner_adf_to_html(heading, content, buf);
                 }
             }
             AdfBlockNode::MediaGroup { content } => {
@@ -295,23 +295,23 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>) {
             AdfBlockNode::NestedExpand { content, attrs } => {
                 let mut expand = node.details().attr("data-nested=\"true\"");
                 write!(expand.summary(), "{}", attrs.title).ok();
-                inner_block_adf_to_html(expand, content);
+                inner_block_adf_to_html(expand, content, buf);
             }
             AdfBlockNode::OrderedList { content, .. } => {
                 let list = node.ol();
-                inner_adf_to_html(list, content);
+                inner_adf_to_html(list, content, buf);
             }
             AdfBlockNode::Panel { content, attrs } => {
                 let panel_type = attrs.panel_type.as_str();
                 let panel = node
                     .figure()
                     .attr(&format!("data-panel-type=\"{panel_type}\""));
-                inner_block_adf_to_html(panel, content);
+                inner_block_adf_to_html(panel, content, buf);
             }
             AdfBlockNode::Paragraph { content } => {
                 let para = node.p();
                 if let Some(content) = content {
-                    inner_adf_to_html(para, content);
+                    inner_adf_to_html(para, content, buf);
                 }
             }
             AdfBlockNode::Rule => {
@@ -350,6 +350,7 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>) {
                                 AdfNode::TableRow { content, .. } => content,
                                 _ => unreachable!(),
                             },
+                            buf,
                         );
                     }
                 }
@@ -363,6 +364,7 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>) {
                                 AdfNode::TableRow { content, .. } => content,
                                 _ => unreachable!(),
                             },
+                            buf,
                         );
                     }
                 }
@@ -372,17 +374,17 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>) {
                     .attr(&format!("data-tag=\"task-list\""))
                     .attr(&format!("id=\"{}\"", attrs.local_id));
                 let task_list = node.ul();
-                inner_adf_to_html(task_list, content);
+                inner_adf_to_html(task_list, content, buf);
             }
             AdfBlockNode::DecisionList { content, attrs } => {
                 node.child(Cow::Borrowed("adf-local-data"))
                     .attr(&format!("data-tag=\"decision-list\""))
                     .attr(&format!("id=\"{}\"", attrs.local_id));
                 let decision_list = node.ul();
-                inner_adf_to_html(decision_list, content);
+                inner_adf_to_html(decision_list, content, buf);
             }
             AdfBlockNode::Unknown => {
-                panic!("Unknown block node type");
+                tracing::warn!("Unknown block type encountered in {}", buf);
             }
         }
     }
@@ -396,14 +398,14 @@ mod tests {
     use crate::markdown::{adf_to_markdown, markdown_to_adf};
 
     fn roundtrip_adf_html_adf(adf: AdfBlockNode) {
-        let html = adf_to_html(vec![adf.clone()]);
+        let html = adf_to_html(vec![adf.clone()], "");
         eprintln!("\n\nHTML:\n{}\n\n", html);
         let back = html_to_adf(&html);
         assert_eq!(back, adf, "Failed roundtrip adf -> html -> adf");
     }
 
     fn roundtrip_adf_html_md_html_adf(adf: AdfBlockNode) {
-        let markdown = adf_to_markdown(&[adf.clone()]);
+        let markdown = adf_to_markdown(&[adf.clone()], "");
         eprintln!("\n\nMARKDOWN:\n{}\n\n", markdown);
         let back = markdown_to_adf(&markdown).unwrap();
         assert_eq!(
@@ -1450,7 +1452,7 @@ mod tests {
         };
 
         // ADF -> Markdown -> ADF should roundtrip cleanly
-        let markdown = adf_to_markdown(&[adf.clone()]);
+        let markdown = adf_to_markdown(&[adf.clone()], "");
         eprintln!("Markdown:\n{}", markdown);
 
         let parsed = markdown_to_adf(&markdown).unwrap();

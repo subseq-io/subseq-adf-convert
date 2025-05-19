@@ -185,8 +185,8 @@ pub fn html_to_markdown(html: String) -> String {
     converter.convert(&html).unwrap_or_default()
 }
 
-pub fn adf_to_markdown(adf: &[AdfBlockNode]) -> String {
-    html_to_markdown(adf_to_html(adf.to_vec()))
+pub fn adf_to_markdown(adf: &[AdfBlockNode], buf: &str) -> String {
+    html_to_markdown(adf_to_html(adf.to_vec(), buf))
 }
 
 pub fn markdown_to_adf(markdown: &str) -> Option<AdfBlockNode> {
@@ -200,14 +200,12 @@ pub fn markdown_to_adf(markdown: &str) -> Option<AdfBlockNode> {
             ..Default::default()
         },
     };
-    eprintln!("Parsing markdown: {}", markdown);
     let html = markdown_to_html(markdown, &options)
         .map_err(|err| {
             tracing::warn!("Failed to convert markdown to HTML: {}", err);
         })
         .unwrap_or_default();
     let sanitized = normalize_html(&html);
-    eprintln!("Parsing html: {}", sanitized);
     Some(html_to_adf(&sanitized))
 }
 
@@ -283,7 +281,7 @@ mod tests {
     #[test]
     fn fuzz_user_editing_markdown_pipeline() {
         let adf = sample_adf_doc();
-        let mut markdown = adf_to_markdown(&[adf]);
+        let mut markdown = adf_to_markdown(&[adf], "");
 
         let inserts = [
             " Hello world! ",
