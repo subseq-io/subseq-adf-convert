@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::fmt::Write;
 
+use chrono::{DateTime, Utc};
 use urlencoding::encode;
 
 use crate::adf::adf_types::{
@@ -127,10 +128,9 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>) {
                 }
             }
             AdfNode::Date { attrs } => {
-                let ts = attrs.timestamp.parse::<i64>().unwrap_or_default();
-                let date_str = chrono::DateTime::from_timestamp(ts, 0)
-                    .unwrap_or_default()
-                    .to_rfc3339();
+                let ts_ms = attrs.timestamp.parse::<i64>().unwrap_or_default();
+                let dt: DateTime<Utc> = DateTime::from_timestamp_millis(ts_ms).unwrap_or_default();
+                let date_str = dt.to_rfc3339();
                 let mut date = node.time().attr(&format!("datetime=\"{}\"", date_str));
                 write!(date, "{}", date_str).ok();
             }
@@ -517,9 +517,11 @@ mod tests {
                             local_id: "item-1".into(),
                             state: TaskItemState::Todo,
                         },
-                        content: vec![AdfNode::Text {
-                            text: "Task item".into(),
-                            marks: None,
+                        content: vec![AdfNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Task item".into(),
+                                marks: None,
+                            }]),
                         }],
                     },
                     AdfNode::TaskItem {
@@ -527,9 +529,11 @@ mod tests {
                             local_id: "item-2".into(),
                             state: TaskItemState::Done,
                         },
-                        content: vec![AdfNode::Text {
-                            text: "Task item 2".into(),
-                            marks: None,
+                        content: vec![AdfNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Task item 2".into(),
+                                marks: None,
+                            }]),
                         }],
                     },
                 ],
@@ -785,9 +789,11 @@ mod tests {
                         state: "DECIDED".into(),
                         local_id: "item-1".into(),
                     },
-                    content: vec![AdfNode::Text {
-                        text: "Decision content".into(),
-                        marks: None,
+                    content: vec![AdfNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Decision content".into(),
+                            marks: None,
+                        }]),
                     }],
                 }],
             }],
@@ -923,9 +929,11 @@ mod tests {
                             state: "DECIDED".into(),
                             local_id: "item-1".into(),
                         },
-                        content: vec![AdfNode::Text {
-                            text: "We will proceed.".into(),
-                            marks: None,
+                        content: vec![AdfNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "We will proceed.".into(),
+                                marks: None,
+                            }]),
                         }],
                     }],
                 },
@@ -1096,9 +1104,11 @@ mod tests {
                                 local_id: "task-1".into(),
                                 state: TaskItemState::Todo,
                             },
-                            content: vec![AdfNode::Text {
-                                text: "First task".into(),
-                                marks: None,
+                            content: vec![AdfNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "First task".into(),
+                                    marks: None,
+                                }]),
                             }],
                         },
                         AdfNode::TaskItem {
@@ -1106,9 +1116,11 @@ mod tests {
                                 local_id: "task-2".into(),
                                 state: TaskItemState::Done,
                             },
-                            content: vec![AdfNode::Text {
-                                text: "Second task".into(),
-                                marks: None,
+                            content: vec![AdfNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Second task".into(),
+                                    marks: None,
+                                }]),
                             }],
                         },
                     ],
@@ -1123,9 +1135,11 @@ mod tests {
                                 state: "DECIDED".into(),
                                 local_id: "decision-1".into(),
                             },
-                            content: vec![AdfNode::Text {
-                                text: "Agreed decision".into(),
-                                marks: None,
+                            content: vec![AdfNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Agreed decision".into(),
+                                    marks: None,
+                                }]),
                             }],
                         },
                         AdfNode::DecisionItem {
@@ -1133,9 +1147,11 @@ mod tests {
                                 state: "DECIDED".into(),
                                 local_id: "decision-2".into(),
                             },
-                            content: vec![AdfNode::Text {
-                                text: "Pending decision".into(),
-                                marks: None,
+                            content: vec![AdfNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Pending decision".into(),
+                                    marks: None,
+                                }]),
                             }],
                         },
                     ],

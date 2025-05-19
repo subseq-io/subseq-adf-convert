@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use chrono::DateTime;
+
 use super::{ADFBuilderState, BlockContext, CustomBlockType, Element};
 use crate::{
     adf::adf_types::{AdfNode, EmojiAttrs, LocalId, StatusAttrs},
@@ -28,9 +30,9 @@ pub(crate) fn date_end_handler() -> HandlerFn {
         if let Some(BlockContext::CustomBlock(CustomBlockType::Date, _, attrs)) = state.stack.pop()
         {
             let timestamp_str = attrs.get("datetime").cloned().unwrap_or_default();
-            let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
-                .map(|dt| dt.timestamp())
-                .unwrap_or(0);
+            let timestamp = DateTime::parse_from_rfc3339(&timestamp_str)
+                .map(|dt| dt.timestamp_millis())
+                .unwrap_or_default();
             ADFBuilder::push_block_to_parent(
                 state,
                 AdfNode::Date {

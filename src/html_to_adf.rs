@@ -251,14 +251,20 @@ impl ADFBuilder {
                             text: text.trim().to_string(),
                             marks,
                         };
-                        nodes.push(node);
+                        let paragraph = AdfNode::Paragraph {
+                            content: Some(vec![node]),
+                        };
+                        nodes.push(paragraph);
                     }
                     BlockContext::DecisionItem(nodes, _) => {
                         let node = AdfNode::Text {
                             text: text.trim().to_string(),
                             marks,
                         };
-                        nodes.push(node);
+                        let paragraph = AdfNode::Paragraph {
+                            content: Some(vec![node]),
+                        };
+                        nodes.push(paragraph);
                     }
                     BlockContext::CodeBlock(lines) => {
                         lines.push(text);
@@ -299,6 +305,8 @@ impl ADFBuilder {
                 | BlockContext::TableBlock(TableBlockType::Cell, parent_nodes)
                 | BlockContext::TableBlock(TableBlockType::Header, parent_nodes)
                 | BlockContext::Blockquote(parent_nodes)
+                | BlockContext::TaskItem(parent_nodes, _, _)
+                | BlockContext::DecisionItem(parent_nodes, _)
                 | BlockContext::ListItem(parent_nodes) => {
                     Self::flatten_top_level_paragraph(nodes, parent_nodes);
                 }
@@ -433,20 +441,25 @@ impl ADFBuilder {
             }
         } else if let Some(BlockContext::TaskItem(nodes, item_state, local_id)) = stack_item {
             if let Some(BlockContext::PendingList { nodes: list, .. }) = state.stack.last_mut() {
-                list.push(AdfNode::TaskItem {
-                    content: nodes,
+                let mut content = vec![];
+                Self::flatten_top_level_paragraph(nodes, &mut content);
+                let task_item = AdfNode::TaskItem {
+                    content,
                     attrs: TaskItemAttrs {
                         local_id,
                         state: item_state,
                     },
-                });
+                };
+                list.push(task_item);
             } else {
                 panic!("TaskItem closed without PendingList parent");
             }
         } else if let Some(BlockContext::DecisionItem(nodes, local_id)) = stack_item {
             if let Some(BlockContext::PendingList { nodes: list, .. }) = state.stack.last_mut() {
+                let mut content = vec![];
+                Self::flatten_top_level_paragraph(nodes, &mut content);
                 list.push(AdfNode::DecisionItem {
-                    content: nodes,
+                    content,
                     attrs: DecisionItemAttrs {
                         local_id,
                         state: "DECIDED".to_string(),
@@ -508,8 +521,11 @@ impl ADFBuilder {
             | BlockContext::ListItem(nodes)
             | BlockContext::Document(nodes) => nodes.push(node),
             BlockContext::CustomBlock(block_ty, nodes, _) => match block_ty {
-                CustomBlockType::Div | CustomBlockType::Expand | CustomBlockType::Panel => {
+                CustomBlockType::Div => {
                     nodes.push(node);
+                }
+                CustomBlockType::Expand | CustomBlockType::Panel => {
+                    Self::flatten_top_level_paragraph(vec![node], nodes);
                 }
                 _ => panic!("Invalid block context for custom block: {block_ty:?} {node:?}"),
             },
@@ -1032,9 +1048,11 @@ mod tests {
             vec![AdfNode::DecisionList {
                 content: vec![
                     AdfNode::DecisionItem {
-                        content: vec![AdfNode::Text {
-                            text: "Decision?".into(),
-                            marks: None,
+                        content: vec![AdfNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Decision?".into(),
+                                marks: None,
+                            }]),
                         }],
                         attrs: DecisionItemAttrs {
                             local_id: "f041c6cd-eb80-47ec-8cba-2e6d13d726de".to_string(),
@@ -1042,9 +1060,11 @@ mod tests {
                         },
                     },
                     AdfNode::DecisionItem {
-                        content: vec![AdfNode::Text {
-                            text: "Do it".into(),
-                            marks: None,
+                        content: vec![AdfNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Do it".into(),
+                                marks: None,
+                            }]),
                         }],
                         attrs: DecisionItemAttrs {
                             local_id: "d34c6e8f-fc4b-4368-bb3c-794b29b6190b".to_string(),

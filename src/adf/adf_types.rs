@@ -392,6 +392,7 @@ pub struct MediaNode {
     #[serde(rename = "type")]
     pub media_type: MediaType,
     pub attrs: MediaAttrs,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub marks: Option<Vec<MediaMark>>,
 }
 
