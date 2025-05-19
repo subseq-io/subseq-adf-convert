@@ -34,8 +34,6 @@ fn media_adf_to_html(mut node: Node, media_entries: Vec<MediaNode>) {
                 if let Some(link) = &link {
                     attrs.push(format!("src=\"{}\"", link.href));
                 }
-                attrs.push(format!("id=\"{}\"", media_node.attrs.id));
-
                 attrs.push(format!(
                     "data-collection=\"{}\"",
                     media_node.attrs.collection
@@ -60,7 +58,7 @@ fn media_adf_to_html(mut node: Node, media_entries: Vec<MediaNode>) {
                     .map(|a| a.as_str())
                     .collect::<Vec<_>>()
                     .join(" ");
-                node.img().attr(&attrs_str);
+                node.child(Cow::Borrowed("img")).attr(&attrs_str);
             }
             MediaDataType::Link => {
                 if let Some(link) = link {
