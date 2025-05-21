@@ -7,7 +7,8 @@ use html5ever::tokenizer::{
 };
 
 use crate::adf::adf_types::{
-    AdfBlockNode, AdfMark, AdfNode, DecisionItemAttrs, ExpandAttrs, LocalId, TaskItemAttrs,
+    AdfBlockNode, AdfMark, AdfNode, DecisionItem, DecisionItemAttrs, DecisionItemState,
+    ExpandAttrs, ListItem, LocalId, TaskItem, TaskItemAttrs,
 };
 use crate::handlers::*;
 
@@ -108,14 +109,18 @@ impl ADFBuilder {
 
         this.insert_start_handler("table", table_start_handler());
         this.insert_end_handler("table", table_end_handler());
-        this.insert_start_handler("th", table_header_start_handler());
-        this.insert_end_handler("th", table_header_end_handler());
-        this.insert_start_handler("tr", table_row_start_handler());
-        this.insert_end_handler("tr", table_row_end_handler());
+
+        // Noops for handling the section tags
         this.insert_start_handler("thead", table_section_start_handler());
         this.insert_end_handler("thead", table_section_end_handler());
         this.insert_start_handler("tbody", table_section_start_handler());
         this.insert_end_handler("tbody", table_section_end_handler());
+
+        this.insert_start_handler("tr", table_row_start_handler());
+        this.insert_end_handler("tr", table_row_end_handler());
+
+        this.insert_start_handler("th", table_header_start_handler());
+        this.insert_end_handler("th", table_header_end_handler());
         this.insert_start_handler("td", table_cell_start_handler());
         this.insert_end_handler("td", table_cell_end_handler());
 
@@ -276,20 +281,14 @@ impl ADFBuilder {
                             text: text.trim().to_string(),
                             marks,
                         };
-                        let paragraph = AdfBlockNode::Paragraph {
-                            content: Some(vec![node]),
-                        };
-                        nodes.push(paragraph);
+                        nodes.push(node);
                     }
                     BlockContext::DecisionItem(nodes, _) => {
                         let node = AdfNode::Text {
                             text: text.trim().to_string(),
                             marks,
                         };
-                        let paragraph = AdfBlockNode::Paragraph {
-                            content: Some(vec![node]),
-                        };
-                        nodes.push(paragraph);
+                        nodes.push(node);
                     }
                     BlockContext::CodeBlock(lines) => {
                         lines.push(text);
@@ -318,8 +317,6 @@ impl ADFBuilder {
                 | BlockContext::TableBlockCell(parent_nodes)
                 | BlockContext::TableBlockHeader(parent_nodes)
                 | BlockContext::Blockquote(parent_nodes)
-                | BlockContext::TaskItem(parent_nodes, _, _)
-                | BlockContext::DecisionItem(parent_nodes, _)
                 | BlockContext::ListItem(parent_nodes) => {
                     if nodes.is_empty() {
                         return;
@@ -424,26 +421,70 @@ impl ADFBuilder {
                         .map(|tag| tag == "decision-list")
                         .unwrap_or(false);
                     if is_task_list {
+                        let task_list_items = nodes
+                            .into_iter()
+                            .filter_map(|item| {
+                                if let ListItemType::TaskItem(task_item) = item {
+                                    Some(task_item)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
                         parent_nodes.push(AdfBlockNode::TaskList {
                             attrs: LocalId {
                                 local_id: local_id.unwrap_or_default(),
                             },
-                            content: nodes,
+                            content: task_list_items,
                         });
                     } else if is_decision_list {
+                        let decision_list_items = nodes
+                            .into_iter()
+                            .filter_map(|item| {
+                                if let ListItemType::DecisionItem(decision_item) = item {
+                                    Some(decision_item)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
                         parent_nodes.push(AdfBlockNode::DecisionList {
-                            content: nodes,
+                            content: decision_list_items,
                             attrs: LocalId {
                                 local_id: local_id.unwrap_or_default(),
                             },
                         });
                     } else if ordered {
+                        let ordered_list_items = nodes
+                            .into_iter()
+                            .filter_map(|item| {
+                                if let ListItemType::ListItem(list_item) = item {
+                                    Some(list_item)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>();
                         parent_nodes.push(AdfBlockNode::OrderedList {
-                            content: nodes,
+                            content: ordered_list_items,
                             attrs: None,
                         });
                     } else {
-                        parent_nodes.push(AdfBlockNode::BulletList { content: nodes });
+                        let bullet_list_items = nodes
+                            .into_iter()
+                            .filter_map(|item| {
+                                if let ListItemType::ListItem(list_item) = item {
+                                    Some(list_item)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>();
+                        parent_nodes.push(AdfBlockNode::BulletList {
+                            content: bullet_list_items,
+                        });
                     }
                 }
                 parent => panic!("Invalid parent for PendingList: {parent:?}"),
@@ -463,7 +504,7 @@ impl ADFBuilder {
         if let Some(BlockContext::ListItem(nodes)) = stack_item {
             match state.stack.last_mut() {
                 Some(BlockContext::PendingList { nodes: list, .. }) => {
-                    list.push(AdfNode::ListItem { content: nodes });
+                    list.push(ListItemType::ListItem(ListItem::new(nodes)));
                 }
                 _ => {
                     panic!("ListItem closed without PendingList parent");
@@ -471,26 +512,27 @@ impl ADFBuilder {
             }
         } else if let Some(BlockContext::TaskItem(nodes, item_state, local_id)) = stack_item {
             if let Some(BlockContext::PendingList { nodes: list, .. }) = state.stack.last_mut() {
-                let task_item = AdfNode::TaskItem {
-                    content: nodes,
-                    attrs: TaskItemAttrs {
+                let task_item = TaskItem::new(
+                    nodes,
+                    TaskItemAttrs {
                         local_id,
                         state: item_state,
                     },
-                };
-                list.push(task_item);
+                );
+                list.push(ListItemType::TaskItem(task_item));
             } else {
                 panic!("TaskItem closed without PendingList parent");
             }
         } else if let Some(BlockContext::DecisionItem(nodes, local_id)) = stack_item {
             if let Some(BlockContext::PendingList { nodes: list, .. }) = state.stack.last_mut() {
-                list.push(AdfNode::DecisionItem {
-                    content: nodes,
-                    attrs: DecisionItemAttrs {
+                let decision_item = DecisionItem::new(
+                    nodes,
+                    DecisionItemAttrs {
                         local_id,
-                        state: "DECIDED".to_string(),
+                        state: DecisionItemState,
                     },
-                });
+                );
+                list.push(ListItemType::DecisionItem(decision_item));
             } else {
                 panic!("DecisionItem closed without PendingList parent");
             }
@@ -519,13 +561,11 @@ impl ADFBuilder {
         if let Some(frame) = state.stack.last_mut() {
             match frame {
                 BlockContext::CodeBlock(lines) => lines.push("\n".into()),
-                BlockContext::Paragraph(nodes) | BlockContext::Heading(_, nodes) => {
-                    nodes.push(node)
-                }
-                BlockContext::Blockquote(nodes)
-                | BlockContext::ListItem(nodes)
+                BlockContext::Paragraph(nodes)
+                | BlockContext::Heading(_, nodes)
                 | BlockContext::DecisionItem(nodes, _)
-                | BlockContext::TaskItem(nodes, _, _) => {
+                | BlockContext::TaskItem(nodes, _, _) => nodes.push(node),
+                BlockContext::Blockquote(nodes) | BlockContext::ListItem(nodes) => {
                     Self::push_into_last_paragraph(nodes, node);
                 }
                 _ => {
@@ -541,8 +581,9 @@ impl ADFBuilder {
     }
 
     pub fn trim_empty_paragraphs(nodes: Vec<AdfBlockNode>) -> Vec<AdfBlockNode> {
-        nodes.into_iter().filter(|node| 
-            match node {
+        nodes
+            .into_iter()
+            .filter(|node| match node {
                 AdfBlockNode::Paragraph { content } => {
                     if let Some(content) = content {
                         !content.is_empty()
@@ -551,8 +592,8 @@ impl ADFBuilder {
                     }
                 }
                 _ => true,
-        })
-        .collect()
+            })
+            .collect()
     }
 
     pub fn push_node_block_to_parent(state: &mut ADFBuilderState, node: AdfBlockNode) {
@@ -609,11 +650,7 @@ impl ADFBuilder {
             .last_mut()
             .expect("There should always be at least the Document node");
         match frame {
-            BlockContext::TableBlock(nodes)
-            | BlockContext::TableRowBlock(nodes)
-            | BlockContext::TableSectionBlock(nodes)
-            | BlockContext::Paragraph(nodes)
-            | BlockContext::Heading(_, nodes) => nodes.push(node),
+            BlockContext::Paragraph(nodes) | BlockContext::Heading(_, nodes) => nodes.push(node),
             BlockContext::Blockquote(nodes)
             | BlockContext::ListItem(nodes)
             | BlockContext::Document(nodes)
@@ -753,8 +790,8 @@ mod tests {
     use super::*;
 
     use crate::adf::adf_types::{
-        AdfNode, HeadingAttrs, LinkMark, MediaAttrs, MediaDataType, MediaNode, MediaSingleAttrs,
-        MediaType, Subsup,
+        AdfNode, DecisionItem, DecisionItemAttrs, HeadingAttrs, LinkMark, ListItem, MediaAttrs,
+        MediaDataType, MediaNode, MediaSingleAttrs, MediaType, Subsup, TableRow, TableRowEntry,
     };
 
     fn assert_content_eq(adf: AdfBlockNode, expected: Vec<AdfBlockNode>) {
@@ -810,22 +847,18 @@ mod tests {
             adf,
             vec![AdfBlockNode::BulletList {
                 content: vec![
-                    AdfNode::ListItem {
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Item one".into(),
-                                marks: None,
-                            }]),
-                        }],
-                    },
-                    AdfNode::ListItem {
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Item two".into(),
-                                marks: None,
-                            }]),
-                        }],
-                    },
+                    ListItem::new(vec![AdfBlockNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Item one".into(),
+                            marks: None,
+                        }]),
+                    }]),
+                    ListItem::new(vec![AdfBlockNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Item two".into(),
+                            marks: None,
+                        }]),
+                    }]),
                 ],
             }],
         );
@@ -839,22 +872,18 @@ mod tests {
             vec![AdfBlockNode::OrderedList {
                 attrs: None,
                 content: vec![
-                    AdfNode::ListItem {
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Item one".into(),
-                                marks: None,
-                            }]),
-                        }],
-                    },
-                    AdfNode::ListItem {
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Item two".into(),
-                                marks: None,
-                            }]),
-                        }],
-                    },
+                    ListItem::new(vec![AdfBlockNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Item one".into(),
+                            marks: None,
+                        }]),
+                    }]),
+                    ListItem::new(vec![AdfBlockNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Item two".into(),
+                            marks: None,
+                        }]),
+                    }]),
                 ],
             }],
         );
@@ -1033,77 +1062,71 @@ mod tests {
             vec![AdfBlockNode::Table {
                 attrs: None,
                 content: vec![
-                    AdfNode::TableRow {
-                        content: vec![
-                            AdfNode::TableHeader {
-                                attrs: None,
-                                content: vec![AdfBlockNode::Paragraph {
+                    TableRow::new(vec![
+                        TableRowEntry::new_table_header(
+                            vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Header 1".into(),
+                                    marks: None,
+                                }]),
+                            }],
+                            None,
+                        ),
+                        TableRowEntry::new_table_header(
+                            vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Header 2".into(),
+                                    marks: None,
+                                }]),
+                            }],
+                            None,
+                        ),
+                    ]),
+                    TableRow::new(vec![
+                        TableRowEntry::new_table_cell(
+                            vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Cell 1".into(),
+                                    marks: None,
+                                }]),
+                            }],
+                            None,
+                        ),
+                        TableRowEntry::new_table_cell(
+                            vec![], // empty cell
+                            None,
+                        ),
+                    ]),
+                    TableRow::new(vec![
+                        TableRowEntry::new_table_cell(
+                            vec![
+                                AdfBlockNode::Paragraph {
                                     content: Some(vec![AdfNode::Text {
-                                        text: "Header 1".into(),
+                                        text: "Nested paragraph".into(),
                                         marks: None,
                                     }]),
-                                }],
-                            },
-                            AdfNode::TableHeader {
-                                attrs: None,
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![AdfNode::Text {
-                                        text: "Header 2".into(),
-                                        marks: None,
-                                    }]),
-                                }],
-                            },
-                        ],
-                    },
-                    AdfNode::TableRow {
-                        content: vec![
-                            AdfNode::TableCell {
-                                attrs: None,
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![AdfNode::Text {
-                                        text: "Cell 1".into(),
-                                        marks: None,
-                                    }]),
-                                }],
-                            },
-                            AdfNode::TableCell {
-                                attrs: None,
-                                content: vec![], // empty cell
-                            },
-                        ],
-                    },
-                    AdfNode::TableRow {
-                        content: vec![
-                            AdfNode::TableCell {
-                                attrs: None,
-                                content: vec![
-                                    AdfBlockNode::Paragraph {
+                                },
+                                AdfBlockNode::Blockquote {
+                                    content: vec![AdfBlockNode::Paragraph {
                                         content: Some(vec![AdfNode::Text {
-                                            text: "Nested paragraph".into(),
+                                            text: "Blockquote inside cell".into(),
                                             marks: None,
                                         }]),
-                                    },
-                                    AdfBlockNode::Blockquote {
-                                        content: vec![AdfBlockNode::Paragraph {
-                                            content: Some(vec![AdfNode::Text {
-                                                text: "Blockquote inside cell".into(),
-                                                marks: None,
-                                            }]),
-                                        }],
-                                    },
-                                ],
-                            },
-                            AdfNode::TableCell {
-                                attrs: None,
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![AdfNode::Text {
-                                        text: "Simple text".into(),
-                                        marks: None,
-                                    }]),
-                                }],
-                            },
-                        ],
-                    },
+                                    }],
+                                },
+                            ],
+                            None,
+                        ),
+                        TableRowEntry::new_table_cell(
+                            vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Simple text".into(),
+                                    marks: None,
+                                }]),
+                            }],
+                            None,
+                        ),
+                    ]),
                 ],
             }],
         );
@@ -1164,30 +1187,26 @@ mod tests {
             adf,
             vec![AdfBlockNode::DecisionList {
                 content: vec![
-                    AdfNode::DecisionItem {
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Decision?".into(),
-                                marks: None,
-                            }]),
+                    DecisionItem::new(
+                        vec![AdfNode::Text {
+                            text: "Decision?".into(),
+                            marks: None,
                         }],
-                        attrs: DecisionItemAttrs {
+                        DecisionItemAttrs {
                             local_id: "f041c6cd-eb80-47ec-8cba-2e6d13d726de".to_string(),
-                            state: "DECIDED".to_string(),
+                            state: DecisionItemState,
                         },
-                    },
-                    AdfNode::DecisionItem {
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Do it".into(),
-                                marks: None,
-                            }]),
+                    ),
+                    DecisionItem::new(
+                        vec![AdfNode::Text {
+                            text: "Do it".into(),
+                            marks: None,
                         }],
-                        attrs: DecisionItemAttrs {
+                        DecisionItemAttrs {
                             local_id: "d34c6e8f-fc4b-4368-bb3c-794b29b6190b".to_string(),
-                            state: "DECIDED".to_string(),
+                            state: DecisionItemState,
                         },
-                    },
+                    ),
                 ],
                 attrs: LocalId {
                     local_id: "6e80893d-7501-409d-9cd9-d2f5366ba665".to_string(),

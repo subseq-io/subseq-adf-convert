@@ -1,5 +1,8 @@
 use super::{ADFBuilderState, BlockContext, Element};
-use crate::{adf::adf_types::TaskItemState, html_to_adf::HandlerFn};
+use crate::{
+    adf::adf_types::{AdfBlockNode, TaskItemState},
+    html_to_adf::HandlerFn,
+};
 
 pub(crate) fn task_item_start_handler() -> HandlerFn {
     Box::new(|state: &mut ADFBuilderState, element: Element| {
@@ -27,6 +30,18 @@ pub(crate) fn task_item_start_handler() -> HandlerFn {
             }
         };
 
+        let mut nodes = vec![];
+        for node in inner {
+            match node {
+                AdfBlockNode::Paragraph {
+                    content: Some(para_nodes),
+                } => {
+                    nodes.extend(para_nodes);
+                }
+                _ => {}
+            };
+        }
+
         if let Some(input_type) = element
             .attrs
             .iter()
@@ -44,7 +59,7 @@ pub(crate) fn task_item_start_handler() -> HandlerFn {
                 };
 
                 let task_item = BlockContext::TaskItem(
-                    inner,
+                    nodes,
                     item_state,
                     element
                         .attrs

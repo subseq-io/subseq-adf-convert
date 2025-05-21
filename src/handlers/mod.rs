@@ -15,7 +15,10 @@ pub(crate) use media::*;
 pub(crate) use table::*;
 pub(crate) use tasks::*;
 
-use crate::adf::adf_types::{AdfBlockNode, AdfMark, AdfNode, LocalId, MediaNode, TaskItemState};
+use crate::adf::adf_types::{
+    AdfBlockNode, AdfMark, AdfNode, DecisionItem, ListItem, LocalId, MediaNode, TableRow,
+    TableRowEntry, TaskItem, TaskItemState,
+};
 
 #[derive(Debug)]
 pub struct Element {
@@ -53,27 +56,33 @@ pub enum MediaBlockType {
 }
 
 #[derive(Debug)]
+pub enum ListItemType {
+    DecisionItem(DecisionItem),
+    ListItem(ListItem),
+    TaskItem(TaskItem),
+}
+
+#[derive(Debug)]
 pub enum BlockContext {
     Document(Vec<AdfBlockNode>),
     Blockquote(Vec<AdfBlockNode>),
     CodeBlock(Vec<String>),
     CustomBlock(CustomBlockType, Vec<AdfBlockNode>, HashMap<String, String>),
     MediaBlock(MediaBlockType, Vec<MediaNode>, HashMap<String, String>),
-    TableBlock(Vec<AdfNode>),
-    TableSectionBlock(Vec<AdfNode>),
-    TableRowBlock(Vec<AdfNode>),
+    TableBlock(Vec<TableRow>),
+    TableRowBlock(Vec<TableRowEntry>),
     TableBlockCell(Vec<AdfBlockNode>),
     TableBlockHeader(Vec<AdfBlockNode>),
     Heading(u8, Vec<AdfNode>),
     Summary(Vec<AdfNode>),
     Paragraph(Vec<AdfNode>),
     PendingList {
-        nodes: Vec<AdfNode>,
+        nodes: Vec<ListItemType>,
         ordered: bool,
         local_id: Option<String>,
         local_tag: Option<String>,
     },
     ListItem(Vec<AdfBlockNode>),
-    TaskItem(Vec<AdfBlockNode>, TaskItemState, String),
-    DecisionItem(Vec<AdfBlockNode>, String),
+    TaskItem(Vec<AdfNode>, TaskItemState, String),
+    DecisionItem(Vec<AdfNode>, String),
 }

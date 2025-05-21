@@ -1,25 +1,246 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::{AsRefStr, Display, EnumIter, EnumString};
 
+macro_rules! fixed_type_tag {
+    ($name:ident, $val:expr) => {
+        #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+        pub struct $name;
+
+        impl ::serde::Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: ::serde::Serializer,
+            {
+                serializer.serialize_str($val)
+            }
+        }
+
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                f.write_str($val)
+            }
+        }
+
+        impl<'de> ::serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: ::serde::Deserializer<'de>,
+            {
+                let s = <String>::deserialize(deserializer)?;
+                if s == $val {
+                    Ok($name)
+                } else {
+                    Err(::serde::de::Error::custom(format!(
+                        "expected '{}', got '{}'",
+                        $val, s
+                    )))
+                }
+            }
+        }
+    };
+}
+
+fixed_type_tag!(TableHeaderType, "tableHeader");
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TableHeader {
+    #[serde(rename = "type")]
+    type_: TableHeaderType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attrs: Option<TableCellAttrs>,
+    content: Vec<AdfBlockNode>,
+}
+
+impl TableHeader {
+    pub fn attrs(&self) -> &Option<TableCellAttrs> {
+        &self.attrs
+    }
+
+    pub fn content(&self) -> &Vec<AdfBlockNode> {
+        &self.content
+    }
+
+    pub fn unwrap(self) -> (Vec<AdfBlockNode>, Option<TableCellAttrs>) {
+        let Self { content, attrs, .. } = self;
+        (content, attrs)
+    }
+}
+
+fixed_type_tag!(TableCellType, "tableCell");
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TableCell {
+    #[serde(rename = "type")]
+    type_: TableCellType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attrs: Option<TableCellAttrs>,
+    content: Vec<AdfBlockNode>,
+}
+
+impl TableCell {
+    pub fn attrs(&self) -> &Option<TableCellAttrs> {
+        &self.attrs
+    }
+
+    pub fn content(&self) -> &Vec<AdfBlockNode> {
+        &self.content
+    }
+
+    pub fn unwrap(self) -> (Vec<AdfBlockNode>, Option<TableCellAttrs>) {
+        let Self { content, attrs, .. } = self;
+        (content, attrs)
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Display)]
+#[strum(serialize_all = "camelCase")]
+#[serde(untagged)]
+pub enum TableRowEntry {
+    TableHeader(TableHeader),
+    TableCell(TableCell),
+}
+
+impl TableRowEntry {
+    pub fn new_table_header(content: Vec<AdfBlockNode>, attrs: Option<TableCellAttrs>) -> Self {
+        Self::TableHeader(TableHeader {
+            type_: TableHeaderType,
+            content,
+            attrs,
+        })
+    }
+
+    pub fn new_table_cell(content: Vec<AdfBlockNode>, attrs: Option<TableCellAttrs>) -> Self {
+        Self::TableCell(TableCell {
+            type_: TableCellType,
+            content,
+            attrs,
+        })
+    }
+}
+
+fixed_type_tag!(TableRowType, "tableRow");
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TableRow {
+    #[serde(rename = "type")]
+    type_: TableRowType,
+    content: Vec<TableRowEntry>,
+}
+
+impl TableRow {
+    pub fn new(content: Vec<TableRowEntry>) -> Self {
+        Self {
+            type_: TableRowType,
+            content,
+        }
+    }
+
+    pub fn content(&self) -> &Vec<TableRowEntry> {
+        &self.content
+    }
+
+    pub fn unwrap(self) -> Vec<TableRowEntry> {
+        self.content
+    }
+}
+
+fixed_type_tag!(TaskItemType, "taskItem");
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskItem {
+    #[serde(rename = "type")]
+    type_: TaskItemType,
+    content: Vec<AdfNode>,
+    attrs: TaskItemAttrs,
+}
+
+impl TaskItem {
+    pub fn new(content: Vec<AdfNode>, attrs: TaskItemAttrs) -> Self {
+        Self {
+            type_: TaskItemType,
+            content,
+            attrs,
+        }
+    }
+
+    pub fn content(&self) -> &Vec<AdfNode> {
+        &self.content
+    }
+
+    pub fn attrs(&self) -> &TaskItemAttrs {
+        &self.attrs
+    }
+
+    pub fn unwrap(self) -> (Vec<AdfNode>, TaskItemAttrs) {
+        let Self { content, attrs, .. } = self;
+        (content, attrs)
+    }
+}
+
+fixed_type_tag!(DecisionItemType, "decisionItem");
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DecisionItem {
+    #[serde(rename = "type")]
+    type_: DecisionItemType,
+    content: Vec<AdfNode>,
+    attrs: DecisionItemAttrs,
+}
+
+impl DecisionItem {
+    pub fn new(content: Vec<AdfNode>, attrs: DecisionItemAttrs) -> Self {
+        Self {
+            type_: DecisionItemType,
+            content,
+            attrs,
+        }
+    }
+
+    pub fn content(&self) -> &Vec<AdfNode> {
+        &self.content
+    }
+
+    pub fn attrs(&self) -> &DecisionItemAttrs {
+        &self.attrs
+    }
+
+    pub fn unwrap(self) -> (Vec<AdfNode>, DecisionItemAttrs) {
+        let Self { content, attrs, .. } = self;
+        (content, attrs)
+    }
+}
+
+fixed_type_tag!(ListItemType, "listItem");
+#[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ListItem {
+    #[serde(rename = "type")]
+    type_: ListItemType,
+    content: Vec<AdfBlockNode>,
+}
+
+impl ListItem {
+    pub fn new(content: Vec<AdfBlockNode>) -> Self {
+        Self {
+            type_: ListItemType,
+            content,
+        }
+    }
+
+    pub fn content(&self) -> &Vec<AdfBlockNode> {
+        &self.content
+    }
+
+    pub fn unwrap(self) -> Vec<AdfBlockNode> {
+        self.content
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, EnumString, Display)]
 #[strum(serialize_all = "camelCase")]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AdfNode {
     HardBreak,
-    ListItem {
-        content: Vec<AdfBlockNode>,
-    },
-    TableCell {
-        attrs: Option<TableCellAttrs>,
-        content: Vec<AdfBlockNode>,
-    },
-    TableHeader {
-        attrs: Option<TableCellAttrs>,
-        content: Vec<AdfBlockNode>,
-    },
-    TableRow {
-        content: Vec<AdfNode>,
-    },
     Text {
         text: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -41,16 +262,6 @@ pub enum AdfNode {
     Status {
         attrs: StatusAttrs,
     },
-    // The following nodes exist but are not documented in the ADF spec:
-    // https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/
-    TaskItem {
-        content: Vec<AdfBlockNode>,
-        attrs: TaskItemAttrs,
-    },
-    DecisionItem {
-        content: Vec<AdfBlockNode>,
-        attrs: DecisionItemAttrs,
-    },
     #[serde(other)]
     Unknown,
 }
@@ -67,7 +278,7 @@ pub enum AdfBlockNode {
         content: Vec<AdfBlockNode>,
     },
     BulletList {
-        content: Vec<AdfNode>,
+        content: Vec<ListItem>,
     },
     CodeBlock {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -107,12 +318,12 @@ pub enum AdfBlockNode {
     Table {
         #[serde(skip_serializing_if = "Option::is_none")]
         attrs: Option<TableAttrs>,
-        content: Vec<AdfNode>,
+        content: Vec<TableRow>,
     },
     OrderedList {
         #[serde(skip_serializing_if = "Option::is_none")]
         attrs: Option<OrderedListAttrs>,
-        content: Vec<AdfNode>,
+        content: Vec<ListItem>,
     },
     // The following nodes exist but are not documented in the ADF spec:
     BlockCard {
@@ -120,10 +331,10 @@ pub enum AdfBlockNode {
     },
     TaskList {
         attrs: LocalId,
-        content: Vec<AdfNode>,
+        content: Vec<TaskItem>,
     },
     DecisionList {
-        content: Vec<AdfNode>,
+        content: Vec<DecisionItem>,
         attrs: LocalId,
     },
     #[serde(other)]
@@ -136,12 +347,6 @@ impl AdfBlockNode {
             return content.clone();
         }
         Vec::new()
-    }
-}
-
-impl AdfNode {
-    pub fn is_task_item(&self) -> bool {
-        matches!(self, Self::TaskItem { .. })
     }
 }
 
@@ -431,10 +636,10 @@ pub enum UserType {
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MentionAttrs {
-    pub access_level: AccessLevel,
+    pub access_level: Option<AccessLevel>,
     pub id: String,
     pub text: Option<String>,
-    pub user_type: UserType,
+    pub user_type: Option<UserType>,
 }
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
@@ -502,10 +707,11 @@ pub struct TaskItemAttrs {
     pub state: TaskItemState,
 }
 
+fixed_type_tag!(DecisionItemState, "DECIDED");
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DecisionItemAttrs {
-    pub state: String,
+    pub state: DecisionItemState,
     pub local_id: String,
 }
 

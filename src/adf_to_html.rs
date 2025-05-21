@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 use urlencoding::encode;
 
 use crate::adf::adf_types::{
-    AdfBlockNode, AdfMark, AdfNode, DataSourceView, MediaDataType, MediaMark, MediaNode, Subsup,
-    TaskItemState,
+    AdfBlockNode, AdfMark, AdfNode, DataSourceView, DecisionItem, ListItem, MediaDataType,
+    MediaMark, MediaNode, Subsup, TableRowEntry, TaskItem, TaskItemState,
 };
 use crate::html_builder::*;
 
@@ -77,6 +77,59 @@ fn media_adf_to_html(mut node: Node, media_entries: Vec<MediaNode>) {
     }
 }
 
+fn table_cell_to_html(mut node: Node, adf: Vec<TableRowEntry>, buf: &str) {
+    for cell in adf {
+        match cell {
+            TableRowEntry::TableCell(adf_cell) => {
+                let (content, _) = adf_cell.unwrap();
+                let cell = node.td();
+                inner_block_adf_to_html(cell, content, buf);
+            }
+            TableRowEntry::TableHeader(adf_header) => {
+                let (content, _) = adf_header.unwrap();
+                let header = node.th();
+                inner_block_adf_to_html(header, content, buf);
+            }
+        }
+    }
+}
+
+fn task_item_to_html(mut node: Node, adf: Vec<TaskItem>, buf: &str) {
+    for task_item in adf {
+        let (content, attrs) = task_item.unwrap();
+        let checked = if attrs.state == TaskItemState::Done {
+            "checked"
+        } else {
+            ""
+        };
+        let local_id = attrs.local_id;
+        let mut task_item = node.li();
+        task_item
+            .child(Cow::Borrowed("adf-task-item"))
+            .attr(&format!("id=\"{}\" type=checkbox {}", local_id, checked));
+        inner_adf_to_html(task_item, content, buf);
+    }
+}
+
+fn decision_item_to_html(mut node: Node, adf: Vec<DecisionItem>, buf: &str) {
+    for decision_item in adf {
+        let (content, attrs) = decision_item.unwrap();
+        let mut li = node.li();
+        let child = li
+            .child(Cow::Borrowed("adf-decision-item"))
+            .attr(&format!("id=\"{}\"", attrs.local_id));
+        inner_adf_to_html(child, content, buf);
+    }
+}
+
+fn inner_list_to_html(mut node: Node, adf: Vec<ListItem>, buf: &str) {
+    for list_item in adf {
+        let content = list_item.unwrap();
+        let list_item = node.li();
+        inner_block_adf_to_html(list_item, content, buf);
+    }
+}
+
 fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>, buf: &str) {
     for adf_node in adf {
         match adf_node {
@@ -111,10 +164,6 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>, buf: &str) {
                     write!(a_tag, "External Link").ok();
                 }
             }
-            AdfNode::ListItem { content } => {
-                let list_item = node.li();
-                inner_block_adf_to_html(list_item, content, buf);
-            }
             AdfNode::Mention { attrs } => {
                 let mut mention = node
                     .child(Cow::Borrowed("adf-mention"))
@@ -138,19 +187,6 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>, buf: &str) {
                     attrs.local_id.unwrap_or_default()
                 ));
                 write!(status, "{}", attrs.text).ok();
-            }
-            AdfNode::TableCell { content, .. } => {
-                let cell = node.td();
-                inner_block_adf_to_html(cell, content, buf);
-            }
-            AdfNode::TableHeader { content, .. } => {
-                let header = node.th();
-                inner_block_adf_to_html(header, content, buf);
-            }
-            // TableRow is simplified now, always outputs <tr> (never decides on header itself anymore)
-            AdfNode::TableRow { content, .. } => {
-                let row = node.tr();
-                inner_adf_to_html(row, content, buf);
             }
             AdfNode::Text { text, marks } => {
                 fn apply_marks(node: &mut Node, marks: &[AdfMark], text: &str) -> std::fmt::Result {
@@ -181,26 +217,6 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>, buf: &str) {
                     }
                 }
                 apply_marks(&mut node, &marks.unwrap_or_default(), &text).ok();
-            }
-            AdfNode::TaskItem { attrs, content } => {
-                let mut task_item = node.li();
-                let checked = if attrs.state == TaskItemState::Done {
-                    "checked"
-                } else {
-                    ""
-                };
-                let local_id = attrs.local_id;
-                task_item
-                    .child(Cow::Borrowed("adf-task-item"))
-                    .attr(&format!("id=\"{}\" type=checkbox {}", local_id, checked));
-                inner_block_adf_to_html(task_item, content, buf);
-            }
-            AdfNode::DecisionItem { content, attrs } => {
-                let mut li = node.li();
-                let child = li
-                    .child(Cow::Borrowed("adf-decision-item"))
-                    .attr(&format!("id=\"{}\"", attrs.local_id));
-                inner_block_adf_to_html(child, content, buf);
             }
             AdfNode::Unknown => {
                 tracing::warn!("Unknown node type in {}", buf);
@@ -243,8 +259,7 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>, buf: &str) {
                 }
             }
             AdfBlockNode::BulletList { content } => {
-                let list = node.ul();
-                inner_adf_to_html(list, content, buf);
+                inner_list_to_html(node.ul(), content, buf);
             }
             AdfBlockNode::CodeBlock { attrs, content } => {
                 let mut pre = node.pre();
@@ -298,8 +313,7 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>, buf: &str) {
                 inner_block_adf_to_html(expand, content, buf);
             }
             AdfBlockNode::OrderedList { content, .. } => {
-                let list = node.ol();
-                inner_adf_to_html(list, content, buf);
+                inner_list_to_html(node.ol(), content, buf);
             }
             AdfBlockNode::Panel { content, attrs } => {
                 let panel_type = attrs.panel_type.as_str();
@@ -319,53 +333,39 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>, buf: &str) {
             }
             AdfBlockNode::Table { content, .. } => {
                 let mut table = node.table();
+                eprintln!("Table content: {:?}", content);
 
                 // Extract header rows and other rows
                 let mut header_rows = vec![];
                 let mut body_rows = vec![];
 
                 for row in content {
-                    if let AdfNode::TableRow {
-                        content: row_content,
-                        ..
-                    } = &row
+                    if row
+                        .content()
+                        .iter()
+                        .any(|n| matches!(n, TableRowEntry::TableHeader { .. }))
                     {
-                        if row_content
-                            .iter()
-                            .any(|n| matches!(n, AdfNode::TableHeader { .. }))
-                        {
-                            header_rows.push(row.clone());
-                        } else {
-                            body_rows.push(row.clone());
-                        }
+                        header_rows.push(row.clone());
+                    } else {
+                        body_rows.push(row.clone());
                     }
                 }
 
                 if !header_rows.is_empty() {
+                    eprintln!("Header rows: {:?}", header_rows);
                     let mut thead = table.thead();
                     for row in header_rows {
-                        inner_adf_to_html(
-                            thead.tr(),
-                            match row {
-                                AdfNode::TableRow { content, .. } => content,
-                                _ => unreachable!(),
-                            },
-                            buf,
-                        );
+                        let content = row.unwrap();
+                        table_cell_to_html(thead.tr(), content, buf);
                     }
                 }
 
                 if !body_rows.is_empty() {
+                    eprintln!("Body rows: {:?}", body_rows);
                     let mut tbody = table.tbody();
                     for row in body_rows {
-                        inner_adf_to_html(
-                            tbody.tr(),
-                            match row {
-                                AdfNode::TableRow { content, .. } => content,
-                                _ => unreachable!(),
-                            },
-                            buf,
-                        );
+                        let content = row.unwrap();
+                        table_cell_to_html(tbody.tr(), content, buf);
                     }
                 }
             }
@@ -374,14 +374,14 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>, buf: &str) {
                     .attr(&format!("data-tag=\"task-list\""))
                     .attr(&format!("id=\"{}\"", attrs.local_id));
                 let task_list = node.ul();
-                inner_adf_to_html(task_list, content, buf);
+                task_item_to_html(task_list, content, buf);
             }
             AdfBlockNode::DecisionList { content, attrs } => {
                 node.child(Cow::Borrowed("adf-local-data"))
                     .attr(&format!("data-tag=\"decision-list\""))
                     .attr(&format!("id=\"{}\"", attrs.local_id));
                 let decision_list = node.ul();
-                inner_adf_to_html(decision_list, content, buf);
+                decision_item_to_html(decision_list, content, buf);
             }
             AdfBlockNode::Unknown => {
                 tracing::warn!("Unknown block type encountered in {}", buf);
@@ -522,30 +522,26 @@ mod tests {
                     local_id: "task-list-1".into(),
                 },
                 content: vec![
-                    AdfNode::TaskItem {
-                        attrs: TaskItemAttrs {
+                    TaskItem::new(
+                        vec![AdfNode::Text {
+                            text: "Task item".into(),
+                            marks: None,
+                        }],
+                        TaskItemAttrs {
                             local_id: "item-1".into(),
                             state: TaskItemState::Todo,
                         },
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Task item".into(),
-                                marks: None,
-                            }]),
+                    ),
+                    TaskItem::new(
+                        vec![AdfNode::Text {
+                            text: "Task item 2".into(),
+                            marks: None,
                         }],
-                    },
-                    AdfNode::TaskItem {
-                        attrs: TaskItemAttrs {
+                        TaskItemAttrs {
                             local_id: "item-2".into(),
                             state: TaskItemState::Done,
                         },
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Task item 2".into(),
-                                marks: None,
-                            }]),
-                        }],
-                    },
+                    ),
                 ],
             }],
             version: 1,
@@ -644,8 +640,8 @@ mod tests {
                     attrs: MentionAttrs {
                         id: "user-1".into(),
                         text: Some("Mentioned User".into()),
-                        access_level: AccessLevel::Site,
-                        user_type: UserType::App,
+                        access_level: Some(AccessLevel::Site),
+                        user_type: Some(UserType::App),
                     },
                 }]),
             }],
@@ -686,22 +682,18 @@ mod tests {
         let adf = AdfBlockNode::Doc {
             content: vec![AdfBlockNode::BulletList {
                 content: vec![
-                    AdfNode::ListItem {
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Bullet 1".into(),
-                                marks: None,
-                            }]),
-                        }],
-                    },
-                    AdfNode::ListItem {
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Bullet 2".into(),
-                                marks: None,
-                            }]),
-                        }],
-                    },
+                    ListItem::new(vec![AdfBlockNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Bullet 1".into(),
+                            marks: None,
+                        }]),
+                    }]),
+                    ListItem::new(vec![AdfBlockNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Bullet 2".into(),
+                            marks: None,
+                        }]),
+                    }]),
                 ],
             }],
             version: 1,
@@ -715,22 +707,18 @@ mod tests {
         let adf = AdfBlockNode::Doc {
             content: vec![AdfBlockNode::OrderedList {
                 content: vec![
-                    AdfNode::ListItem {
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Ordered 1".into(),
-                                marks: None,
-                            }]),
-                        }],
-                    },
-                    AdfNode::ListItem {
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "Ordered 2".into(),
-                                marks: None,
-                            }]),
-                        }],
-                    },
+                    ListItem::new(vec![AdfBlockNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Ordered 1".into(),
+                            marks: None,
+                        }]),
+                    }]),
+                    ListItem::new(vec![AdfBlockNode::Paragraph {
+                        content: Some(vec![AdfNode::Text {
+                            text: "Ordered 2".into(),
+                            marks: None,
+                        }]),
+                    }]),
                 ],
                 attrs: None,
             }],
@@ -802,18 +790,16 @@ mod tests {
                 attrs: LocalId {
                     local_id: "decision-list-1".into(),
                 },
-                content: vec![AdfNode::DecisionItem {
-                    attrs: DecisionItemAttrs {
-                        state: "DECIDED".into(),
+                content: vec![DecisionItem::new(
+                    vec![AdfNode::Text {
+                        text: "Decision content".into(),
+                        marks: None,
+                    }],
+                    DecisionItemAttrs {
+                        state: DecisionItemState,
                         local_id: "item-1".into(),
                     },
-                    content: vec![AdfBlockNode::Paragraph {
-                        content: Some(vec![AdfNode::Text {
-                            text: "Decision content".into(),
-                            marks: None,
-                        }]),
-                    }],
-                }],
+                )],
             }],
             version: 1,
         };
@@ -827,28 +813,24 @@ mod tests {
             content: vec![AdfBlockNode::Table {
                 attrs: None,
                 content: vec![
-                    AdfNode::TableRow {
-                        content: vec![AdfNode::TableHeader {
-                            attrs: None,
-                            content: vec![AdfBlockNode::Paragraph {
-                                content: Some(vec![AdfNode::Text {
-                                    text: "Header".into(),
-                                    marks: None,
-                                }]),
-                            }],
+                    TableRow::new(vec![TableRowEntry::new_table_header(
+                        vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Header".into(),
+                                marks: None,
+                            }]),
                         }],
-                    },
-                    AdfNode::TableRow {
-                        content: vec![AdfNode::TableCell {
-                            attrs: None,
-                            content: vec![AdfBlockNode::Paragraph {
-                                content: Some(vec![AdfNode::Text {
-                                    text: "Cell".into(),
-                                    marks: None,
-                                }]),
-                            }],
+                        None,
+                    )]),
+                    TableRow::new(vec![TableRowEntry::new_table_cell(
+                        vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Cell".into(),
+                                marks: None,
+                            }]),
                         }],
-                    },
+                        None,
+                    )]),
                 ],
             }],
             version: 1,
@@ -876,71 +858,63 @@ mod tests {
                 },
                 AdfBlockNode::BulletList {
                     content: vec![
-                        AdfNode::ListItem {
-                            content: vec![AdfBlockNode::Paragraph {
-                                content: Some(vec![AdfNode::Text {
-                                    text: "Item 1".into(),
-                                    marks: None,
-                                }]),
-                            }],
-                        },
-                        AdfNode::ListItem {
-                            content: vec![AdfBlockNode::Paragraph {
-                                content: Some(vec![AdfNode::Text {
-                                    text: "Item 2".into(),
-                                    marks: None,
-                                }]),
-                            }],
-                        },
+                        ListItem::new(vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Item 1".into(),
+                                marks: None,
+                            }]),
+                        }]),
+                        ListItem::new(vec![AdfBlockNode::Paragraph {
+                            content: Some(vec![AdfNode::Text {
+                                text: "Item 2".into(),
+                                marks: None,
+                            }]),
+                        }]),
                     ],
                 },
                 AdfBlockNode::Table {
                     attrs: None,
                     content: vec![
-                        AdfNode::TableRow {
-                            content: vec![
-                                AdfNode::TableHeader {
-                                    attrs: None,
-                                    content: vec![AdfBlockNode::Paragraph {
-                                        content: Some(vec![AdfNode::Text {
-                                            text: "Header 1".into(),
-                                            marks: None,
-                                        }]),
-                                    }],
-                                },
-                                AdfNode::TableHeader {
-                                    attrs: None,
-                                    content: vec![AdfBlockNode::Paragraph {
-                                        content: Some(vec![AdfNode::Text {
-                                            text: "Header 2".into(),
-                                            marks: None,
-                                        }]),
-                                    }],
-                                },
-                            ],
-                        },
-                        AdfNode::TableRow {
-                            content: vec![
-                                AdfNode::TableCell {
-                                    attrs: None,
-                                    content: vec![AdfBlockNode::Paragraph {
-                                        content: Some(vec![AdfNode::Text {
-                                            text: "Cell 1".into(),
-                                            marks: None,
-                                        }]),
-                                    }],
-                                },
-                                AdfNode::TableCell {
-                                    attrs: None,
-                                    content: vec![AdfBlockNode::Paragraph {
-                                        content: Some(vec![AdfNode::Text {
-                                            text: "Cell 2".into(),
-                                            marks: None,
-                                        }]),
-                                    }],
-                                },
-                            ],
-                        },
+                        TableRow::new(vec![
+                            TableRowEntry::new_table_header(
+                                vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Header 1".into(),
+                                        marks: None,
+                                    }]),
+                                }],
+                                None,
+                            ),
+                            TableRowEntry::new_table_header(
+                                vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Header 2".into(),
+                                        marks: None,
+                                    }]),
+                                }],
+                                None,
+                            ),
+                        ]),
+                        TableRow::new(vec![
+                            TableRowEntry::new_table_cell(
+                                vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Cell 1".into(),
+                                        marks: None,
+                                    }]),
+                                }],
+                                None,
+                            ),
+                            TableRowEntry::new_table_cell(
+                                vec![AdfBlockNode::Paragraph {
+                                    content: Some(vec![AdfNode::Text {
+                                        text: "Cell 2".into(),
+                                        marks: None,
+                                    }]),
+                                }],
+                                None,
+                            ),
+                        ]),
                     ],
                 },
             ],
@@ -958,18 +932,16 @@ mod tests {
                     attrs: LocalId {
                         local_id: "decision-1".into(),
                     },
-                    content: vec![AdfNode::DecisionItem {
-                        attrs: DecisionItemAttrs {
-                            state: "DECIDED".into(),
+                    content: vec![DecisionItem::new(
+                        vec![AdfNode::Text {
+                            text: "We will proceed.".into(),
+                            marks: None,
+                        }],
+                        DecisionItemAttrs {
+                            state: DecisionItemState,
                             local_id: "item-1".into(),
                         },
-                        content: vec![AdfBlockNode::Paragraph {
-                            content: Some(vec![AdfNode::Text {
-                                text: "We will proceed.".into(),
-                                marks: None,
-                            }]),
-                        }],
-                    }],
+                    )],
                 },
                 AdfBlockNode::Paragraph {
                     content: Some(vec![AdfNode::Status {
@@ -1060,8 +1032,8 @@ mod tests {
                         attrs: MentionAttrs {
                             id: "user-1".into(),
                             text: Some("User".into()),
-                            access_level: AccessLevel::None,
-                            user_type: UserType::Default,
+                            access_level: None,
+                            user_type: None,
                         },
                     },
                     AdfNode::Text {
@@ -1133,30 +1105,26 @@ mod tests {
                         local_id: "task-list".into(),
                     },
                     content: vec![
-                        AdfNode::TaskItem {
-                            attrs: TaskItemAttrs {
+                        TaskItem::new(
+                            vec![AdfNode::Text {
+                                text: "First task".into(),
+                                marks: None,
+                            }],
+                            TaskItemAttrs {
                                 local_id: "task-1".into(),
                                 state: TaskItemState::Todo,
                             },
-                            content: vec![AdfBlockNode::Paragraph {
-                                content: Some(vec![AdfNode::Text {
-                                    text: "First task".into(),
-                                    marks: None,
-                                }]),
+                        ),
+                        TaskItem::new(
+                            vec![AdfNode::Text {
+                                text: "Second task".into(),
+                                marks: None,
                             }],
-                        },
-                        AdfNode::TaskItem {
-                            attrs: TaskItemAttrs {
+                            TaskItemAttrs {
                                 local_id: "task-2".into(),
                                 state: TaskItemState::Done,
                             },
-                            content: vec![AdfBlockNode::Paragraph {
-                                content: Some(vec![AdfNode::Text {
-                                    text: "Second task".into(),
-                                    marks: None,
-                                }]),
-                            }],
-                        },
+                        ),
                     ],
                 },
                 AdfBlockNode::DecisionList {
@@ -1164,30 +1132,26 @@ mod tests {
                         local_id: "decision-list".into(),
                     },
                     content: vec![
-                        AdfNode::DecisionItem {
-                            attrs: DecisionItemAttrs {
-                                state: "DECIDED".into(),
+                        DecisionItem::new(
+                            vec![AdfNode::Text {
+                                text: "Agreed decision".into(),
+                                marks: None,
+                            }],
+                            DecisionItemAttrs {
+                                state: DecisionItemState,
                                 local_id: "decision-1".into(),
                             },
-                            content: vec![AdfBlockNode::Paragraph {
-                                content: Some(vec![AdfNode::Text {
-                                    text: "Agreed decision".into(),
-                                    marks: None,
-                                }]),
+                        ),
+                        DecisionItem::new(
+                            vec![AdfNode::Text {
+                                text: "Pending decision".into(),
+                                marks: None,
                             }],
-                        },
-                        AdfNode::DecisionItem {
-                            attrs: DecisionItemAttrs {
-                                state: "DECIDED".into(),
+                            DecisionItemAttrs {
+                                state: DecisionItemState,
                                 local_id: "decision-2".into(),
                             },
-                            content: vec![AdfBlockNode::Paragraph {
-                                content: Some(vec![AdfNode::Text {
-                                    text: "Pending decision".into(),
-                                    marks: None,
-                                }]),
-                            }],
-                        },
+                        ),
                     ],
                 },
             ],
@@ -1203,65 +1167,61 @@ mod tests {
             content: vec![AdfBlockNode::Table {
                 attrs: None,
                 content: vec![
-                    AdfNode::TableRow {
-                        content: vec![
-                            AdfNode::TableHeader {
-                                attrs: None,
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![
-                                        AdfNode::Text {
-                                            text: "Bold header".into(),
-                                            marks: Some(vec![AdfMark::Strong]),
+                    TableRow::new(vec![
+                        TableRowEntry::new_table_header(
+                            vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![
+                                    AdfNode::Text {
+                                        text: "Bold header".into(),
+                                        marks: Some(vec![AdfMark::Strong]),
+                                    },
+                                    AdfNode::Emoji {
+                                        attrs: EmojiAttrs {
+                                            text: Some("📊".into()),
+                                            short_name: ":bar_chart:".into(),
                                         },
-                                        AdfNode::Emoji {
-                                            attrs: EmojiAttrs {
-                                                text: Some("📊".into()),
-                                                short_name: ":bar_chart:".into(),
-                                            },
-                                        },
-                                    ]),
-                                }],
-                            },
-                            AdfNode::TableHeader {
-                                attrs: None,
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![AdfNode::Text {
-                                        text: "Plain header".into(),
+                                    },
+                                ]),
+                            }],
+                            None,
+                        ),
+                        TableRowEntry::new_table_header(
+                            vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Plain header".into(),
+                                    marks: None,
+                                }]),
+                            }],
+                            None,
+                        ),
+                    ]),
+                    TableRow::new(vec![
+                        TableRowEntry::new_table_cell(
+                            vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![
+                                    AdfNode::Text {
+                                        text: "Line 1 ".into(),
                                         marks: None,
-                                    }]),
-                                }],
-                            },
-                        ],
-                    },
-                    AdfNode::TableRow {
-                        content: vec![
-                            AdfNode::TableCell {
-                                attrs: None,
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![
-                                        AdfNode::Text {
-                                            text: "Line 1 ".into(),
-                                            marks: None,
-                                        },
-                                        AdfNode::Text {
-                                            text: "Line 2".into(),
-                                            marks: Some(vec![AdfMark::Strong]),
-                                        },
-                                    ]),
-                                }],
-                            },
-                            AdfNode::TableCell {
-                                attrs: None,
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![AdfNode::InlineCard {
-                                        attrs: InlineCardAttrs {
-                                            url: Some("https://inline.cell".into()),
-                                        },
-                                    }]),
-                                }],
-                            },
-                        ],
-                    },
+                                    },
+                                    AdfNode::Text {
+                                        text: "Line 2".into(),
+                                        marks: Some(vec![AdfMark::Strong]),
+                                    },
+                                ]),
+                            }],
+                            None,
+                        ),
+                        TableRowEntry::new_table_cell(
+                            vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::InlineCard {
+                                    attrs: InlineCardAttrs {
+                                        url: Some("https://inline.cell".into()),
+                                    },
+                                }]),
+                            }],
+                            None,
+                        ),
+                    ]),
                 ],
             }],
             version: 1,
@@ -1283,22 +1243,18 @@ mod tests {
                     },
                     AdfBlockNode::OrderedList {
                         content: vec![
-                            AdfNode::ListItem {
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![AdfNode::Text {
-                                        text: "List item 1".into(),
-                                        marks: None,
-                                    }]),
-                                }],
-                            },
-                            AdfNode::ListItem {
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![AdfNode::Text {
-                                        text: "List item 2".into(),
-                                        marks: None,
-                                    }]),
-                                }],
-                            },
+                            ListItem::new(vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "List item 1".into(),
+                                    marks: None,
+                                }]),
+                            }]),
+                            ListItem::new(vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "List item 2".into(),
+                                    marks: None,
+                                }]),
+                            }]),
                         ],
                         attrs: None,
                     },
@@ -1387,28 +1343,24 @@ mod tests {
                 AdfBlockNode::Table {
                     attrs: None,
                     content: vec![
-                        AdfNode::TableRow {
-                            content: vec![AdfNode::TableHeader {
-                                attrs: None,
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![AdfNode::Text {
-                                        text: "Header 1".into(),
-                                        marks: None,
-                                    }]),
-                                }],
+                        TableRow::new(vec![TableRowEntry::new_table_header(
+                            vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Header 1".into(),
+                                    marks: None,
+                                }]),
                             }],
-                        },
-                        AdfNode::TableRow {
-                            content: vec![AdfNode::TableCell {
-                                attrs: None,
-                                content: vec![AdfBlockNode::Paragraph {
-                                    content: Some(vec![AdfNode::Text {
-                                        text: "Cell 1".into(),
-                                        marks: None,
-                                    }]),
-                                }],
+                            None,
+                        )]),
+                        TableRow::new(vec![TableRowEntry::new_table_cell(
+                            vec![AdfBlockNode::Paragraph {
+                                content: Some(vec![AdfNode::Text {
+                                    text: "Cell 1".into(),
+                                    marks: None,
+                                }]),
                             }],
-                        },
+                            None,
+                        )]),
                     ],
                 },
                 AdfBlockNode::Blockquote {
@@ -1453,8 +1405,6 @@ mod tests {
 
         // ADF -> Markdown -> ADF should roundtrip cleanly
         let markdown = adf_to_markdown(&[adf.clone()], "");
-        eprintln!("Markdown:\n{}", markdown);
-
         let parsed = markdown_to_adf(&markdown).unwrap();
 
         assert_eq!(
