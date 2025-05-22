@@ -638,9 +638,12 @@ pub enum UserType {
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MentionAttrs {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub access_level: Option<AccessLevel>,
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user_type: Option<UserType>,
 }
 
