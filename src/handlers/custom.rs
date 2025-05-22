@@ -4,7 +4,9 @@ use chrono::DateTime;
 
 use super::{ADFBuilderState, BlockContext, CustomBlockType, Element};
 use crate::{
-    adf::adf_types::{AdfBlockNode, AdfNode, EmojiAttrs, LocalId, StatusAttrs},
+    adf::adf_types::{
+        AccessLevel, AdfBlockNode, AdfNode, EmojiAttrs, LocalId, StatusAttrs, UserType,
+    },
     html_to_adf::{ADFBuilder, HandlerFn, extract_style},
 };
 
@@ -203,21 +205,17 @@ pub(crate) fn mention_end_handler() -> HandlerFn {
         {
             let text = state.current_text.trim().to_string();
             state.current_text.clear();
-            let user_type = serde_json::from_str(
-                &attrs
-                    .get("data-user-type")
-                    .map(|s| format!("\"{}\"", s.as_str()))
-                    .unwrap_or("\"DEFAULT\"".to_string()),
-            )
-            .unwrap_or_default();
+            let user_type: Option<UserType> = attrs
+                .get("data-mention-user-type")
+                .map(|s| format!("\"{}\"", s.as_str()))
+                .map(|s| serde_json::from_str(&s).ok())
+                .flatten();
 
-            let access_level = serde_json::from_str(
-                &attrs
-                    .get("data-access-level")
-                    .map(|s| format!("\"{}\"", s.as_str()))
-                    .unwrap_or("\"NONE\"".to_string()),
-            )
-            .unwrap_or_default();
+            let access_level: Option<AccessLevel> = attrs
+                .get("data-mention-access-level")
+                .map(|s| format!("\"{}\"", s.as_str()))
+                .map(|s| serde_json::from_str(&s).ok())
+                .flatten();
 
             ADFBuilder::push_node_to_parent(
                 state,

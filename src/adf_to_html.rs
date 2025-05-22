@@ -168,14 +168,19 @@ fn inner_adf_to_html(mut node: Node, adf: Vec<AdfNode>, buf: &str) {
                 let mut mention = node
                     .child(Cow::Borrowed("adf-mention"))
                     .attr(&format!("data-mention-id=\"{}\"", attrs.id));
-                mention = mention.attr(&format!(
-                    "data-user-type={}",
-                    serde_json::to_string(&attrs.user_type).expect("Failed to serialize")
-                ));
-                mention = mention.attr(&format!(
-                    "data-access-level={}",
-                    serde_json::to_string(&attrs.access_level).expect("Failed to serialize")
-                ));
+
+                if let Some(user_type) = &attrs.user_type {
+                    mention = mention.attr(&format!(
+                        "data-mention-user-type={}",
+                        serde_json::to_string(user_type).expect("value should be serializable")
+                    ));
+                }
+                if let Some(access_level) = &attrs.access_level {
+                    mention = mention.attr(&format!(
+                        "data-mention-access-level={}",
+                        serde_json::to_string(access_level).expect("value should be serializable")
+                    ));
+                }
                 if let Some(text) = &attrs.text {
                     write!(mention, "{}", text).ok();
                 }

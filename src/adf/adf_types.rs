@@ -618,19 +618,21 @@ pub enum MediaMark {
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum AccessLevel {
-    #[default]
-    None,
     Site,
     Application,
+    #[default]
+    #[serde(other)]
+    None,
 }
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum UserType {
-    #[default]
-    Default,
     Special,
     App,
+    #[default]
+    #[serde(other)]
+    Default,
 }
 
 #[derive(Clone, Deserialize, Serialize, Eq, PartialEq, Debug, Default)]
