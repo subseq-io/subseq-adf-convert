@@ -338,7 +338,7 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>, buf: &str) {
             }
             AdfBlockNode::Table { content, .. } => {
                 let mut table = node.table();
-                eprintln!("Table content: {:?}", content);
+                tracing::debug!(?content, "Table content");
 
                 // Extract header rows and other rows
                 let mut header_rows = vec![];
@@ -357,7 +357,7 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>, buf: &str) {
                 }
 
                 if !header_rows.is_empty() {
-                    eprintln!("Header rows: {:?}", header_rows);
+                    tracing::debug!(?header_rows, "Header rows");
                     let mut thead = table.thead();
                     for row in header_rows {
                         let content = row.unwrap();
@@ -366,7 +366,7 @@ fn inner_block_adf_to_html(mut node: Node, adf: Vec<AdfBlockNode>, buf: &str) {
                 }
 
                 if !body_rows.is_empty() {
-                    eprintln!("Body rows: {:?}", body_rows);
+                    tracing::debug!(?body_rows, "Body rows");
                     let mut tbody = table.tbody();
                     for row in body_rows {
                         let content = row.unwrap();
@@ -404,14 +404,14 @@ mod tests {
 
     fn roundtrip_adf_html_adf(adf: AdfBlockNode) {
         let html = adf_to_html(vec![adf.clone()], "");
-        eprintln!("\n\nHTML:\n{}\n\n", html);
+        tracing::debug!(html = %html, "Roundtrip HTML");
         let back = html_to_adf(&html);
         assert_eq!(back, adf, "Failed roundtrip adf -> html -> adf");
     }
 
     fn roundtrip_adf_html_md_html_adf(adf: AdfBlockNode) {
         let markdown = adf_to_markdown(&[adf.clone()], "");
-        eprintln!("\n\nMARKDOWN:\n{}\n\n", markdown);
+        tracing::debug!(markdown = %markdown, "Roundtrip markdown");
         let back = markdown_to_adf(&markdown).unwrap();
         assert_eq!(
             back, adf,

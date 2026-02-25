@@ -11,7 +11,7 @@ fn main() {
     // Get the first argument (after the program name)
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
-        eprintln!("Usage: {} <input_file.json>", args[0]);
+        tracing::debug!(program = %args[0], "Usage: <program> <input_file.json>");
         std::process::exit(1);
     }
 
@@ -19,30 +19,30 @@ fn main() {
 
     // Read file contents
     let contents = fs::read_to_string(filename).unwrap_or_else(|err| {
-        eprintln!("Failed to read file {}: {}", filename, err);
+        tracing::debug!(filename = %filename, error = %err, "Failed to read input file");
         std::process::exit(1);
     });
 
     // Parse as JSON
     let json: Value = serde_json::from_str(&contents).unwrap_or_else(|err| {
-        eprintln!("Invalid JSON: {}", err);
+        tracing::debug!(error = %err, "Invalid JSON");
         std::process::exit(1);
     });
 
     // Extract "description" field
     let fields = json.get("fields").unwrap_or_else(|| {
-        eprintln!("Missing 'fields' field in JSON");
+        tracing::debug!("Missing 'fields' field in JSON");
         std::process::exit(1);
     });
 
     let description = fields.get("description").cloned().unwrap_or_else(|| {
-        eprintln!("Missing 'description' field in fields");
+        tracing::debug!("Missing 'description' field in fields");
         std::process::exit(1);
     });
 
     // Parse as AdfNode
     let adf: AdfBlockNode = from_value(description).unwrap_or_else(|err| {
-        eprintln!("Failed to parse 'description' as AdfNode: {}", err);
+        tracing::debug!(error = %err, "Failed to parse 'description' as AdfNode");
         std::process::exit(1);
     });
     let html = adf_to_html(vec![adf], &contents);
@@ -52,8 +52,8 @@ fn main() {
 
     let adf = markdown_to_adf(&markdown);
     let adf = adf.unwrap_or_else(|| {
-        eprintln!("Failed to convert markdown to AdfNode");
+        tracing::debug!("Failed to convert markdown to AdfNode");
         std::process::exit(1);
     });
-    eprintln!("{}", serde_json::to_string(&adf).unwrap());
+    tracing::debug!(adf_json = %serde_json::to_string(&adf).unwrap(), "Converted markdown to ADF");
 }

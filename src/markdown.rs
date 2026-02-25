@@ -205,7 +205,7 @@ pub fn markdown_to_adf(markdown: &str) -> Option<AdfBlockNode> {
             tracing::warn!("Failed to convert markdown to HTML: {}", err);
         })
         .unwrap_or_default();
-    eprintln!("Presanitized HTML: {}", html);
+    tracing::debug!(presanitized_html = %html, "Presanitized HTML");
     let sanitized = normalize_html(&html);
     Some(html_to_adf(&sanitized))
 }

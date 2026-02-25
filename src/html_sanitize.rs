@@ -144,7 +144,7 @@ pub fn normalize_html(input: &str) -> String {
     let post_sanitized = String::from_utf8(output).unwrap();
     // Fix for broken <br> tags
     let sanitized = post_sanitized.replace("<br>", "<br />");
-    eprintln!("Sanitized HTML: {}", sanitized);
+    tracing::debug!(sanitized_html = %sanitized, "Sanitized HTML");
     sanitized
 }
 
