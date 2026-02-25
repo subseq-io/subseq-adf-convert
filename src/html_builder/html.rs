@@ -7,334 +7,334 @@ pub trait Html5 {
     fn doctype(&mut self);
 
     /// Defines a hyperlink
-    fn a(&mut self) -> Node;
+    fn a(&mut self) -> Node<'_>;
 
     /// Defines an abbreviation or an acronym
-    fn abbr(&mut self) -> Node;
+    fn abbr(&mut self) -> Node<'_>;
 
     /// Defines contact information for the author/owner of a document
-    fn address(&mut self) -> Node;
+    fn address(&mut self) -> Node<'_>;
 
     /// Defines an area inside an image map
-    fn area(&mut self) -> Void;
+    fn area(&mut self) -> Void<'_>;
 
     /// Defines an article
-    fn article(&mut self) -> Node;
+    fn article(&mut self) -> Node<'_>;
 
     /// Defines content aside from the page content
-    fn aside(&mut self) -> Node;
+    fn aside(&mut self) -> Node<'_>;
 
     /// Defines embedded sound content
-    fn audio(&mut self) -> Node;
+    fn audio(&mut self) -> Node<'_>;
 
     /// Defines bold text
-    fn b(&mut self) -> Node;
+    fn b(&mut self) -> Node<'_>;
 
     /// Specifies the base URL/target for all relative URLs in a document
-    fn base(&mut self) -> Void;
+    fn base(&mut self) -> Void<'_>;
 
     /// Isolates a part of text that might be formatted in a different direction from other text outside it
-    fn bdi(&mut self) -> Node;
+    fn bdi(&mut self) -> Node<'_>;
 
     /// Overrides the current text direction
-    fn bdo(&mut self) -> Node;
+    fn bdo(&mut self) -> Node<'_>;
 
     /// Defines a section that is quoted from another source
-    fn blockquote(&mut self) -> Node;
+    fn blockquote(&mut self) -> Node<'_>;
 
     /// Defines the document's body
-    fn body(&mut self) -> Node;
+    fn body(&mut self) -> Node<'_>;
 
     /// Defines a single line break
-    fn br(&mut self) -> Void;
+    fn br(&mut self) -> Void<'_>;
 
     /// Defines a clickable button
-    fn button(&mut self) -> Node;
+    fn button(&mut self) -> Node<'_>;
 
     /// Used to draw graphics, on the fly, via scripting (usually JavaScript)
-    fn canvas(&mut self) -> Node;
+    fn canvas(&mut self) -> Node<'_>;
 
     /// Defines a table caption
-    fn caption(&mut self) -> Node;
+    fn caption(&mut self) -> Node<'_>;
 
     /// Defines the title of a work
-    fn cite(&mut self) -> Node;
+    fn cite(&mut self) -> Node<'_>;
 
     /// Defines a piece of computer code
-    fn code(&mut self) -> Node;
+    fn code(&mut self) -> Node<'_>;
 
     /// Specifies column properties for each column within a `<colgroup>` element
-    fn col(&mut self) -> Void;
+    fn col(&mut self) -> Void<'_>;
 
     /// Specifies a group of one or more columns in a table for formatting
-    fn colgroup(&mut self) -> Node;
+    fn colgroup(&mut self) -> Node<'_>;
 
     /// Adds a machine-readable translation of a given content
-    fn data(&mut self) -> Node;
+    fn data(&mut self) -> Node<'_>;
 
     /// Specifies a list of pre-defined options for input controls
-    fn datalist(&mut self) -> Node;
+    fn datalist(&mut self) -> Node<'_>;
 
     /// Defines a description/value of a term in a description list
-    fn dd(&mut self) -> Node;
+    fn dd(&mut self) -> Node<'_>;
 
     /// Defines text that has been deleted from a document
-    fn del(&mut self) -> Node;
+    fn del(&mut self) -> Node<'_>;
 
     /// Defines additional details that the user can view or hide
-    fn details(&mut self) -> Node;
+    fn details(&mut self) -> Node<'_>;
 
     /// Specifies a term that is going to be defined within the content
-    fn dfn(&mut self) -> Node;
+    fn dfn(&mut self) -> Node<'_>;
 
     /// Defines a dialog box or window
-    fn dialog(&mut self) -> Node;
+    fn dialog(&mut self) -> Node<'_>;
 
     /// Defines a section in a document
-    fn div(&mut self) -> Node;
+    fn div(&mut self) -> Node<'_>;
 
     /// Defines a description list
-    fn dl(&mut self) -> Node;
+    fn dl(&mut self) -> Node<'_>;
 
     /// Defines a term/name in a description list
-    fn dt(&mut self) -> Node;
+    fn dt(&mut self) -> Node<'_>;
 
     /// Defines emphasized text
-    fn em(&mut self) -> Node;
+    fn em(&mut self) -> Node<'_>;
 
     /// Defines a container for an external application
-    fn embed(&mut self) -> Void;
+    fn embed(&mut self) -> Void<'_>;
 
     /// Groups related elements in a form
-    fn fieldset(&mut self) -> Node;
+    fn fieldset(&mut self) -> Node<'_>;
 
     /// Defines a caption for a `<figure>` element
-    fn figcaption(&mut self) -> Node;
+    fn figcaption(&mut self) -> Node<'_>;
 
     /// Specifies self-contained content
-    fn figure(&mut self) -> Node;
+    fn figure(&mut self) -> Node<'_>;
 
     /// Defines a footer for a document or section
-    fn footer(&mut self) -> Node;
+    fn footer(&mut self) -> Node<'_>;
 
     /// Defines an HTML form for user input
-    fn form(&mut self) -> Node;
+    fn form(&mut self) -> Node<'_>;
 
     /// Defines HTML headings
-    fn h1(&mut self) -> Node;
+    fn h1(&mut self) -> Node<'_>;
 
     /// Defines HTML headings
-    fn h2(&mut self) -> Node;
+    fn h2(&mut self) -> Node<'_>;
 
     /// Defines HTML headings
-    fn h3(&mut self) -> Node;
+    fn h3(&mut self) -> Node<'_>;
 
     /// Defines HTML headings
-    fn h4(&mut self) -> Node;
+    fn h4(&mut self) -> Node<'_>;
 
     /// Defines HTML headings
-    fn h5(&mut self) -> Node;
+    fn h5(&mut self) -> Node<'_>;
 
     /// Defines HTML headings
-    fn h6(&mut self) -> Node;
+    fn h6(&mut self) -> Node<'_>;
 
     /// Contains metadata/information for the document
-    fn head(&mut self) -> Node;
+    fn head(&mut self) -> Node<'_>;
 
     /// Defines a header for a document or section
-    fn header(&mut self) -> Node;
+    fn header(&mut self) -> Node<'_>;
 
     /// Defines a thematic change in the content
-    fn hr(&mut self) -> Void;
+    fn hr(&mut self) -> Void<'_>;
 
     /// Defines the root of an HTML document
-    fn html(&mut self) -> Node;
+    fn html(&mut self) -> Node<'_>;
 
     /// Defines a part of text in an alternate voice or mood
-    fn i(&mut self) -> Node;
+    fn i(&mut self) -> Node<'_>;
 
     /// Defines an inline frame
-    fn iframe(&mut self) -> Node;
+    fn iframe(&mut self) -> Node<'_>;
 
     /// Defines an image
-    fn img(&mut self) -> Void;
+    fn img(&mut self) -> Void<'_>;
 
     /// Defines an input control
-    fn input(&mut self) -> Void;
+    fn input(&mut self) -> Void<'_>;
 
     /// Defines a text that has been inserted into a document
-    fn ins(&mut self) -> Node;
+    fn ins(&mut self) -> Node<'_>;
 
     /// Defines keyboard input
-    fn kbd(&mut self) -> Node;
+    fn kbd(&mut self) -> Node<'_>;
 
     /// Defines a label for an `<input>` element
-    fn label(&mut self) -> Node;
+    fn label(&mut self) -> Node<'_>;
 
     /// Defines a caption for a `<fieldset>` element
-    fn legend(&mut self) -> Node;
+    fn legend(&mut self) -> Node<'_>;
 
     /// Defines a list item
-    fn li(&mut self) -> Node;
+    fn li(&mut self) -> Node<'_>;
 
     /// Defines the relationship between a document and an external resource (most used to link to style sheets)
-    fn link(&mut self) -> Void;
+    fn link(&mut self) -> Void<'_>;
 
     /// Specifies the main content of a document
-    fn main(&mut self) -> Node;
+    fn main(&mut self) -> Node<'_>;
 
     /// Defines an image map
-    fn map(&mut self) -> Node;
+    fn map(&mut self) -> Node<'_>;
 
     /// Defines marked/highlighted text
-    fn mark(&mut self) -> Node;
+    fn mark(&mut self) -> Node<'_>;
 
     /// Defines metadata about an HTML document
-    fn meta(&mut self) -> Void;
+    fn meta(&mut self) -> Void<'_>;
 
     /// Defines a scalar measurement within a known range (a gauge)
-    fn meter(&mut self) -> Node;
+    fn meter(&mut self) -> Node<'_>;
 
     /// Defines navigation links
-    fn nav(&mut self) -> Node;
+    fn nav(&mut self) -> Node<'_>;
 
     /// Defines an alternate content for users that do not support client-side scripts
-    fn noscript(&mut self) -> Node;
+    fn noscript(&mut self) -> Node<'_>;
 
     /// Defines a container for an external application
-    fn object(&mut self) -> Node;
+    fn object(&mut self) -> Node<'_>;
 
     /// Defines an ordered list
-    fn ol(&mut self) -> Node;
+    fn ol(&mut self) -> Node<'_>;
 
     /// Defines a group of related options in a drop-down list
-    fn optgroup(&mut self) -> Node;
+    fn optgroup(&mut self) -> Node<'_>;
 
     /// Defines an option in a drop-down list
-    fn option(&mut self) -> Node;
+    fn option(&mut self) -> Node<'_>;
 
     /// Defines the result of a calculation
-    fn output(&mut self) -> Node;
+    fn output(&mut self) -> Node<'_>;
 
     /// Defines a paragraph
-    fn p(&mut self) -> Node;
+    fn p(&mut self) -> Node<'_>;
 
     /// Defines a parameter for an object
-    fn param(&mut self) -> Void;
+    fn param(&mut self) -> Void<'_>;
 
     /// Defines a container for multiple image resources
-    fn picture(&mut self) -> Node;
+    fn picture(&mut self) -> Node<'_>;
 
     /// Defines preformatted text
-    fn pre(&mut self) -> Node;
+    fn pre(&mut self) -> Node<'_>;
 
     /// Represents the progress of a task
-    fn progress(&mut self) -> Node;
+    fn progress(&mut self) -> Node<'_>;
 
     /// Defines a short quotation
-    fn q(&mut self) -> Node;
+    fn q(&mut self) -> Node<'_>;
 
     /// Defines what to show in browsers that do not support ruby annotations
-    fn rp(&mut self) -> Node;
+    fn rp(&mut self) -> Node<'_>;
 
     /// Defines an explanation/pronunciation of characters (for East Asian typography)
-    fn rt(&mut self) -> Node;
+    fn rt(&mut self) -> Node<'_>;
 
     /// Defines a ruby annotation (for East Asian typography)
-    fn ruby(&mut self) -> Node;
+    fn ruby(&mut self) -> Node<'_>;
 
     /// Defines text that is no longer correct
-    fn s(&mut self) -> Node;
+    fn s(&mut self) -> Node<'_>;
 
     /// Defines sample output from a computer program
-    fn samp(&mut self) -> Node;
+    fn samp(&mut self) -> Node<'_>;
 
     /// Defines a client-side script
-    fn script(&mut self) -> Node;
+    fn script(&mut self) -> Node<'_>;
 
     /// Defines a section in a document
-    fn section(&mut self) -> Node;
+    fn section(&mut self) -> Node<'_>;
 
     /// Defines a drop-down list
-    fn select(&mut self) -> Node;
+    fn select(&mut self) -> Node<'_>;
 
     /// Defines smaller text
-    fn small(&mut self) -> Node;
+    fn small(&mut self) -> Node<'_>;
 
     /// Defines multiple media resources for media elements (`<video>` and `<audio>`)
-    fn source(&mut self) -> Void;
+    fn source(&mut self) -> Void<'_>;
 
     /// Defines a section in a document
-    fn span(&mut self) -> Node;
+    fn span(&mut self) -> Node<'_>;
 
     /// Defines important text
-    fn strong(&mut self) -> Node;
+    fn strong(&mut self) -> Node<'_>;
 
     /// Defines style information for a document
-    fn style(&mut self) -> Node;
+    fn style(&mut self) -> Node<'_>;
 
     /// Defines subscripted text
-    fn sub(&mut self) -> Node;
+    fn sub(&mut self) -> Node<'_>;
 
     /// Defines a visible heading for a `<details>` element
-    fn summary(&mut self) -> Node;
+    fn summary(&mut self) -> Node<'_>;
 
     /// Defines superscripted text
-    fn sup(&mut self) -> Node;
+    fn sup(&mut self) -> Node<'_>;
 
     /// Defines a container for SVG graphics
-    fn svg(&mut self) -> Node;
+    fn svg(&mut self) -> Node<'_>;
 
     /// Defines a table
-    fn table(&mut self) -> Node;
+    fn table(&mut self) -> Node<'_>;
 
     /// Groups the body content in a table
-    fn tbody(&mut self) -> Node;
+    fn tbody(&mut self) -> Node<'_>;
 
     /// Defines a cell in a table
-    fn td(&mut self) -> Node;
+    fn td(&mut self) -> Node<'_>;
 
     /// Defines a container for content that should be hidden when the page loads
-    fn template(&mut self) -> Node;
+    fn template(&mut self) -> Node<'_>;
 
     /// Defines a multiline input control (text area)
-    fn textarea(&mut self) -> Node;
+    fn textarea(&mut self) -> Node<'_>;
 
     /// Groups the footer content in a table
-    fn tfoot(&mut self) -> Node;
+    fn tfoot(&mut self) -> Node<'_>;
 
     /// Defines a header cell in a table
-    fn th(&mut self) -> Node;
+    fn th(&mut self) -> Node<'_>;
 
     /// Groups the header content in a table
-    fn thead(&mut self) -> Node;
+    fn thead(&mut self) -> Node<'_>;
 
     /// Defines a specific time (or datetime)
-    fn time(&mut self) -> Node;
+    fn time(&mut self) -> Node<'_>;
 
     /// Defines a title for the document
-    fn title(&mut self) -> Node;
+    fn title(&mut self) -> Node<'_>;
 
     /// Defines a row in a table
-    fn tr(&mut self) -> Node;
+    fn tr(&mut self) -> Node<'_>;
 
     /// Defines text tracks for media elements (`<video>` and `<audio>`)
-    fn track(&mut self) -> Void;
+    fn track(&mut self) -> Void<'_>;
 
     /// Defines some text that is unarticulated and styled differently from normal text
-    fn u(&mut self) -> Node;
+    fn u(&mut self) -> Node<'_>;
 
     /// Defines an unordered list
-    fn ul(&mut self) -> Node;
+    fn ul(&mut self) -> Node<'_>;
 
     /// Defines a variable
-    fn var(&mut self) -> Node;
+    fn var(&mut self) -> Node<'_>;
 
     /// Defines embedded video content
-    fn video(&mut self) -> Node;
+    fn video(&mut self) -> Node<'_>;
 
     /// Defines a possible line-break
-    fn wbr(&mut self) -> Void;
+    fn wbr(&mut self) -> Void<'_>;
 }
 
 impl<'a> Html5 for Node<'a> {
@@ -344,552 +344,552 @@ impl<'a> Html5 for Node<'a> {
     }
 
     /// Defines a hyperlink
-    fn a(&mut self) -> Node {
+    fn a(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("a"))
     }
 
     /// Defines an abbreviation or an acronym
-    fn abbr(&mut self) -> Node {
+    fn abbr(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("abbr"))
     }
 
     /// Defines contact information for the author/owner of a document
-    fn address(&mut self) -> Node {
+    fn address(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("address"))
     }
 
     /// Defines an area inside an image map
-    fn area(&mut self) -> Void {
+    fn area(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("area"))
     }
 
     /// Defines an article
-    fn article(&mut self) -> Node {
+    fn article(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("article"))
     }
 
     /// Defines content aside from the page content
-    fn aside(&mut self) -> Node {
+    fn aside(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("aside"))
     }
 
     /// Defines embedded sound content
-    fn audio(&mut self) -> Node {
+    fn audio(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("audio"))
     }
 
     /// Defines bold text
-    fn b(&mut self) -> Node {
+    fn b(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("b"))
     }
 
     /// Specifies the base URL/target for all relative URLs in a document
-    fn base(&mut self) -> Void {
+    fn base(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("base"))
     }
 
     /// Isolates a part of text that might be formatted in a different direction from other text outside it
-    fn bdi(&mut self) -> Node {
+    fn bdi(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("bdi"))
     }
 
     /// Overrides the current text direction
-    fn bdo(&mut self) -> Node {
+    fn bdo(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("bdo"))
     }
 
     /// Defines a section that is quoted from another source
-    fn blockquote(&mut self) -> Node {
+    fn blockquote(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("blockquote"))
     }
 
     /// Defines the document's body
-    fn body(&mut self) -> Node {
+    fn body(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("body"))
     }
 
     /// Defines a single line break
-    fn br(&mut self) -> Void {
+    fn br(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("br"))
     }
 
     /// Defines a clickable button
-    fn button(&mut self) -> Node {
+    fn button(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("button"))
     }
 
     /// Used to draw graphics, on the fly, via scripting (usually JavaScript)
-    fn canvas(&mut self) -> Node {
+    fn canvas(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("canvas"))
     }
 
     /// Defines a table caption
-    fn caption(&mut self) -> Node {
+    fn caption(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("caption"))
     }
 
     /// Defines the title of a work
-    fn cite(&mut self) -> Node {
+    fn cite(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("cite"))
     }
 
     /// Defines a piece of computer code
-    fn code(&mut self) -> Node {
+    fn code(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("code"))
     }
 
     /// Specifies column properties for each column within a `<colgroup>` element
-    fn col(&mut self) -> Void {
+    fn col(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("col"))
     }
 
     /// Specifies a group of one or more columns in a table for formatting
-    fn colgroup(&mut self) -> Node {
+    fn colgroup(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("colgroup"))
     }
 
     /// Adds a machine-readable translation of a given content
-    fn data(&mut self) -> Node {
+    fn data(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("data"))
     }
 
     /// Specifies a list of pre-defined options for input controls
-    fn datalist(&mut self) -> Node {
+    fn datalist(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("datalist"))
     }
 
     /// Defines a description/value of a term in a description list
-    fn dd(&mut self) -> Node {
+    fn dd(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("dd"))
     }
 
     /// Defines text that has been deleted from a document
-    fn del(&mut self) -> Node {
+    fn del(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("del"))
     }
 
     /// Defines additional details that the user can view or hide
-    fn details(&mut self) -> Node {
+    fn details(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("details"))
     }
 
     /// Specifies a term that is going to be defined within the content
-    fn dfn(&mut self) -> Node {
+    fn dfn(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("dfn"))
     }
 
     /// Defines a dialog box or window
-    fn dialog(&mut self) -> Node {
+    fn dialog(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("dialog"))
     }
 
     /// Defines a section in a document
-    fn div(&mut self) -> Node {
+    fn div(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("div"))
     }
 
     /// Defines a description list
-    fn dl(&mut self) -> Node {
+    fn dl(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("dl"))
     }
 
     /// Defines a term/name in a description list
-    fn dt(&mut self) -> Node {
+    fn dt(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("dt"))
     }
 
     /// Defines emphasized text
-    fn em(&mut self) -> Node {
+    fn em(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("em"))
     }
 
     /// Defines a container for an external application
-    fn embed(&mut self) -> Void {
+    fn embed(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("embed"))
     }
 
     /// Groups related elements in a form
-    fn fieldset(&mut self) -> Node {
+    fn fieldset(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("fieldset"))
     }
 
     /// Defines a caption for a `<figure>` element
-    fn figcaption(&mut self) -> Node {
+    fn figcaption(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("figcaption"))
     }
 
     /// Specifies self-contained content
-    fn figure(&mut self) -> Node {
+    fn figure(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("figure"))
     }
 
     /// Defines a footer for a document or section
-    fn footer(&mut self) -> Node {
+    fn footer(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("footer"))
     }
 
     /// Defines an HTML form for user input
-    fn form(&mut self) -> Node {
+    fn form(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("form"))
     }
 
     /// Defines HTML headings
-    fn h1(&mut self) -> Node {
+    fn h1(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("h1"))
     }
 
     /// Defines HTML headings
-    fn h2(&mut self) -> Node {
+    fn h2(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("h2"))
     }
 
     /// Defines HTML headings
-    fn h3(&mut self) -> Node {
+    fn h3(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("h3"))
     }
 
     /// Defines HTML headings
-    fn h4(&mut self) -> Node {
+    fn h4(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("h4"))
     }
 
     /// Defines HTML headings
-    fn h5(&mut self) -> Node {
+    fn h5(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("h5"))
     }
 
     /// Defines HTML headings
-    fn h6(&mut self) -> Node {
+    fn h6(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("h6"))
     }
 
     /// Contains metadata/information for the document
-    fn head(&mut self) -> Node {
+    fn head(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("head"))
     }
 
     /// Defines a header for a document or section
-    fn header(&mut self) -> Node {
+    fn header(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("header"))
     }
 
     /// Defines a thematic change in the content
-    fn hr(&mut self) -> Void {
+    fn hr(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("hr"))
     }
 
     /// Defines the root of an HTML document
-    fn html(&mut self) -> Node {
+    fn html(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("html"))
     }
 
     /// Defines a part of text in an alternate voice or mood
-    fn i(&mut self) -> Node {
+    fn i(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("i"))
     }
 
     /// Defines an inline frame
-    fn iframe(&mut self) -> Node {
+    fn iframe(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("iframe"))
     }
 
     /// Defines an image
-    fn img(&mut self) -> Void {
+    fn img(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("img"))
     }
 
     /// Defines an input control
-    fn input(&mut self) -> Void {
+    fn input(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("input"))
     }
 
     /// Defines a text that has been inserted into a document
-    fn ins(&mut self) -> Node {
+    fn ins(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("ins"))
     }
 
     /// Defines keyboard input
-    fn kbd(&mut self) -> Node {
+    fn kbd(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("kbd"))
     }
 
     /// Defines a label for an `<input>` element
-    fn label(&mut self) -> Node {
+    fn label(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("label"))
     }
 
     /// Defines a caption for a `<fieldset>` element
-    fn legend(&mut self) -> Node {
+    fn legend(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("legend"))
     }
 
     /// Defines a list item
-    fn li(&mut self) -> Node {
+    fn li(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("li"))
     }
 
     /// Defines the relationship between a document and an external resource (most used to link to style sheets)
-    fn link(&mut self) -> Void {
+    fn link(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("link"))
     }
 
     /// Specifies the main content of a document
-    fn main(&mut self) -> Node {
+    fn main(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("main"))
     }
 
     /// Defines an image map
-    fn map(&mut self) -> Node {
+    fn map(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("map"))
     }
 
     /// Defines marked/highlighted text
-    fn mark(&mut self) -> Node {
+    fn mark(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("mark"))
     }
 
     /// Defines metadata about an HTML document
-    fn meta(&mut self) -> Void {
+    fn meta(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("meta"))
     }
 
     /// Defines a scalar measurement within a known range (a gauge)
-    fn meter(&mut self) -> Node {
+    fn meter(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("meter"))
     }
 
     /// Defines navigation links
-    fn nav(&mut self) -> Node {
+    fn nav(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("nav"))
     }
 
     /// Defines an alternate content for users that do not support client-side scripts
-    fn noscript(&mut self) -> Node {
+    fn noscript(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("noscript"))
     }
 
     /// Defines a container for an external application
-    fn object(&mut self) -> Node {
+    fn object(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("object"))
     }
 
     /// Defines an ordered list
-    fn ol(&mut self) -> Node {
+    fn ol(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("ol"))
     }
 
     /// Defines a group of related options in a drop-down list
-    fn optgroup(&mut self) -> Node {
+    fn optgroup(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("optgroup"))
     }
 
     /// Defines an option in a drop-down list
-    fn option(&mut self) -> Node {
+    fn option(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("option"))
     }
 
     /// Defines the result of a calculation
-    fn output(&mut self) -> Node {
+    fn output(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("output"))
     }
 
     /// Defines a paragraph
-    fn p(&mut self) -> Node {
+    fn p(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("p"))
     }
 
     /// Defines a parameter for an object
-    fn param(&mut self) -> Void {
+    fn param(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("param"))
     }
 
     /// Defines a container for multiple image resources
-    fn picture(&mut self) -> Node {
+    fn picture(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("picture"))
     }
 
     /// Defines preformatted text
-    fn pre(&mut self) -> Node {
+    fn pre(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("pre"))
     }
 
     /// Represents the progress of a task
-    fn progress(&mut self) -> Node {
+    fn progress(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("progress"))
     }
 
     /// Defines a short quotation
-    fn q(&mut self) -> Node {
+    fn q(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("q"))
     }
 
     /// Defines what to show in browsers that do not support ruby annotations
-    fn rp(&mut self) -> Node {
+    fn rp(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("rp"))
     }
 
     /// Defines an explanation/pronunciation of characters (for East Asian typography)
-    fn rt(&mut self) -> Node {
+    fn rt(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("rt"))
     }
 
     /// Defines a ruby annotation (for East Asian typography)
-    fn ruby(&mut self) -> Node {
+    fn ruby(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("ruby"))
     }
 
     /// Defines text that is no longer correct
-    fn s(&mut self) -> Node {
+    fn s(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("s"))
     }
 
     /// Defines sample output from a computer program
-    fn samp(&mut self) -> Node {
+    fn samp(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("samp"))
     }
 
     /// Defines a client-side script
-    fn script(&mut self) -> Node {
+    fn script(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("script"))
     }
 
     /// Defines a section in a document
-    fn section(&mut self) -> Node {
+    fn section(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("section"))
     }
 
     /// Defines a drop-down list
-    fn select(&mut self) -> Node {
+    fn select(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("select"))
     }
 
     /// Defines smaller text
-    fn small(&mut self) -> Node {
+    fn small(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("small"))
     }
 
     /// Defines multiple media resources for media elements (`<video>` and `<audio>`)
-    fn source(&mut self) -> Void {
+    fn source(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("source"))
     }
 
     /// Defines a section in a document
-    fn span(&mut self) -> Node {
+    fn span(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("span"))
     }
 
     /// Defines important text
-    fn strong(&mut self) -> Node {
+    fn strong(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("strong"))
     }
 
     /// Defines style information for a document
-    fn style(&mut self) -> Node {
+    fn style(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("style"))
     }
 
     /// Defines subscripted text
-    fn sub(&mut self) -> Node {
+    fn sub(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("sub"))
     }
 
     /// Defines a visible heading for a `<details>` element
-    fn summary(&mut self) -> Node {
+    fn summary(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("summary"))
     }
 
     /// Defines superscripted text
-    fn sup(&mut self) -> Node {
+    fn sup(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("sup"))
     }
 
     /// Defines a container for SVG graphics
-    fn svg(&mut self) -> Node {
+    fn svg(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("svg"))
     }
 
     /// Defines a table
-    fn table(&mut self) -> Node {
+    fn table(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("table"))
     }
 
     /// Groups the body content in a table
-    fn tbody(&mut self) -> Node {
+    fn tbody(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("tbody"))
     }
 
     /// Defines a cell in a table
-    fn td(&mut self) -> Node {
+    fn td(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("td"))
     }
 
     /// Defines a container for content that should be hidden when the page loads
-    fn template(&mut self) -> Node {
+    fn template(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("template"))
     }
 
     /// Defines a multiline input control (text area)
-    fn textarea(&mut self) -> Node {
+    fn textarea(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("textarea"))
     }
 
     /// Groups the footer content in a table
-    fn tfoot(&mut self) -> Node {
+    fn tfoot(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("tfoot"))
     }
 
     /// Defines a header cell in a table
-    fn th(&mut self) -> Node {
+    fn th(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("th"))
     }
 
     /// Groups the header content in a table
-    fn thead(&mut self) -> Node {
+    fn thead(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("thead"))
     }
 
     /// Defines a specific time (or datetime)
-    fn time(&mut self) -> Node {
+    fn time(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("time"))
     }
 
     /// Defines a title for the document
-    fn title(&mut self) -> Node {
+    fn title(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("title"))
     }
 
     /// Defines a row in a table
-    fn tr(&mut self) -> Node {
+    fn tr(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("tr"))
     }
 
     /// Defines text tracks for media elements (`<video>` and `<audio>`)
-    fn track(&mut self) -> Void {
+    fn track(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("track"))
     }
 
     /// Defines some text that is unarticulated and styled differently from normal text
-    fn u(&mut self) -> Node {
+    fn u(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("u"))
     }
 
     /// Defines an unordered list
-    fn ul(&mut self) -> Node {
+    fn ul(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("ul"))
     }
 
     /// Defines a variable
-    fn var(&mut self) -> Node {
+    fn var(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("var"))
     }
 
     /// Defines embedded video content
-    fn video(&mut self) -> Node {
+    fn video(&mut self) -> Node<'_> {
         self.child(Cow::Borrowed("video"))
     }
 
     /// Defines a possible line-break
-    fn wbr(&mut self) -> Void {
+    fn wbr(&mut self) -> Void<'_> {
         self.void_child(Cow::Borrowed("wbr"))
     }
 }
